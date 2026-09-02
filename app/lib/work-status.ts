@@ -1,3 +1,5 @@
+import type { BadgeTone } from "../ui/Badge";
+
 export const WORK_STATUS_ORDER = [
   "received",
   "confirmed",
@@ -26,6 +28,34 @@ export const PIPELINE_WORK_STATUSES = WORK_STATUS_ORDER.filter(
 
 export type PipelineWorkStatus = (typeof PIPELINE_WORK_STATUSES)[number];
 
+const WORK_STATUS_TONES: Record<WorkStatus, BadgeTone> = {
+  received: "neutral",
+  confirmed: "neutral",
+  in_progress: "info",
+  ready: "success",
+  completed: "neutral",
+  cancelled: "danger",
+};
+
+export const WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS: Readonly<Record<WorkStatus, readonly WorkStatus[]>> = {
+  received: ["in_progress"],
+  confirmed: ["in_progress"],
+  in_progress: ["ready"],
+  ready: [],
+  completed: [],
+  cancelled: [],
+};
+
+export type PaymentStatus = "unpaid" | "partial" | "paid";
+
 export function workStatusLabel(status: WorkStatus) {
   return WORK_STATUS_LABELS[status];
+}
+
+export function workStatusTone(status: WorkStatus): BadgeTone {
+  return WORK_STATUS_TONES[status];
+}
+
+export function paymentStatusTone(status: PaymentStatus): BadgeTone {
+  return status === "paid" ? "success" : "neutral";
 }

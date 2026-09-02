@@ -13,6 +13,8 @@ export type DataTableColumn<Row> = {
   sortValue?: (row: Row) => DataTableSortValue;
   width?: string;
   align?: "left" | "center" | "right";
+  multiline?: boolean;
+  cellLayout?: "inline" | "stacked";
 };
 
 export type DataTableGroup<Row> = {
@@ -182,7 +184,15 @@ export function DataTable<Row>({
           </span>
         </td>
         {columns.map((column) => (
-          <td key={column.id} style={{ textAlign: column.align ?? "left" }}>
+          <td
+            key={column.id}
+            className={[
+              "ui-data-table__cell",
+              column.multiline ? "ui-data-table__cell--multiline" : "",
+              `ui-data-table__cell--${column.cellLayout ?? "inline"}`,
+            ].filter(Boolean).join(" ")}
+            style={{ width: column.width, textAlign: column.align ?? "left" }}
+          >
             {column.cell(row)}
           </td>
         ))}
@@ -193,6 +203,10 @@ export function DataTable<Row>({
   return (
     <div className="ui-data-table__scroll">
       <table className="ui-data-table" aria-label={ariaLabel}>
+        <colgroup>
+          <col style={{ width: "42px" }} />
+          {columns.map((column) => <col key={column.id} style={column.width ? { width: column.width } : undefined} />)}
+        </colgroup>
         <thead>
           <tr>
             <th className="ui-data-table__selection">

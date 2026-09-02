@@ -1,6 +1,9 @@
 "use client";
 
+import { CalendarDays } from "lucide-react";
+import { useState } from "react";
 import type {
+  ChangeEventHandler,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -31,10 +34,78 @@ export function Field({ id, label, hint, error, className, children }: FieldProp
 
 export type FieldInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "id"> & Omit<FieldProps, "children">;
 
-export function FieldInput({ id, label, hint, error, className, ...props }: FieldInputProps) {
+type NativeDateTimeType = "date" | "datetime-local";
+
+type LocalizedDateTimeInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  id: string;
+  type: NativeDateTimeType;
+  invalid: boolean;
+};
+
+function stringValue(value: InputHTMLAttributes<HTMLInputElement>["value"]) {
+  return typeof value === "string" ? value : "";
+}
+
+function formatDateTimeValue(type: NativeDateTimeType, value: string, placeholder?: string) {
+  if (!value) return placeholder ?? (type === "date" ? "날짜 선택" : "날짜 및 시간 선택");
+  const [date, time] = value.split("T");
+  const formattedDate = date.replaceAll("-", ".");
+  return type === "date" || !time ? formattedDate : `${formattedDate} ${time.slice(0, 5)}`;
+}
+
+function isNativeDateTimeType(type: InputHTMLAttributes<HTMLInputElement>["type"]): type is NativeDateTimeType {
+  return type === "date" || type === "datetime-local";
+}
+
+function LocalizedDateTimeInput({
+  id,
+  type,
+  invalid,
+  value,
+  defaultValue,
+  placeholder,
+  onChange,
+  ...props
+}: LocalizedDateTimeInputProps) {
+  const [uncontrolledValue, setUncontrolledValue] = useState(() => stringValue(defaultValue));
+  const currentValue = value === undefined ? uncontrolledValue : stringValue(value);
+
+  const handleChange: ChangeEventHandler<HTMLInputElement> = (event) => {
+    if (value === undefined) setUncontrolledValue(event.currentTarget.value);
+    onChange?.(event);
+  };
+
+  return (
+    <span className={["ui-field__native-date", props.disabled ? "ui-field__native-date--disabled" : ""].filter(Boolean).join(" ")}>
+      <span className="ui-field__native-date-value" aria-hidden="true">
+        {formatDateTimeValue(type, currentValue, placeholder)}
+      </span>
+      <CalendarDays className="ui-field__native-date-icon" size={18} aria-hidden="true" />
+      <input
+        {...props}
+        id={id}
+        type={type}
+        value={value}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+        className="ui-field__control ui-field__control--native-date"
+        aria-invalid={invalid || undefined}
+        onChange={handleChange}
+      />
+    </span>
+  );
+}
+
+export function FieldInput({ id, label, hint, error, className, type, ...props }: FieldInputProps) {
+  const nativeDateTimeType = isNativeDateTimeType(type) ? type : null;
+
   return (
     <Field id={id} label={label} hint={hint} error={error} className={className}>
-      <input id={id} className="ui-field__control" aria-invalid={Boolean(error) || undefined} {...props} />
+      {nativeDateTimeType ? (
+        <LocalizedDateTimeInput id={id} type={nativeDateTimeType} invalid={Boolean(error)} {...props} />
+      ) : (
+        <input id={id} type={type} className="ui-field__control" aria-invalid={Boolean(error) || undefined} {...props} />
+      )}
     </Field>
   );
 }

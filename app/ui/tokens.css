@@ -5,7 +5,15 @@
   --paper: #f7f3ea;
   --line: #ded7ca;
   --muted: #7f796f;
-  --green: #277153;
+  --badge-neutral-background: #eee9e1;
+  --badge-neutral-foreground: #665e54;
+  --badge-info-background: #eeeafa;
+  --badge-info-foreground: #644bab;
+  --badge-success-background: #e4f4eb;
+  --badge-success-foreground: #277153;
+  --badge-danger-background: #fff0ee;
+  --badge-danger-foreground: #9d3029;
+  --green: var(--badge-success-foreground);
   --orange: #a75c24;
   --shadow: 0 14px 40px rgba(60, 40, 20, 0.11);
   --font-sans: Pretendard, "Noto Sans KR", Arial, sans-serif;

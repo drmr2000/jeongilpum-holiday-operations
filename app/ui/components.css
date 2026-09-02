@@ -100,6 +100,73 @@
   font-size: var(--text-md);
 }
 
+.ui-field__control[type="number"] {
+  appearance: textfield;
+}
+
+.ui-field__control[type="number"]::-webkit-inner-spin-button,
+.ui-field__control[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.ui-field__native-date {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 40px 0 10px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #d2c9bd;
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+
+.ui-field__native-date:focus-within {
+  border-color: var(--wine);
+}
+
+.ui-field__native-date--disabled {
+  opacity: 0.55;
+}
+
+.ui-field__native-date-value {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-field__native-date-icon {
+  position: absolute;
+  right: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.ui-field__control--native-date {
+  min-height: 0;
+  padding: 0;
+  position: absolute;
+  inset: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ui-field__control--native-date:focus {
+  border: 0;
+}
+
+.ui-field__control--native-date:disabled {
+  cursor: not-allowed;
+}
+
 .ui-field__control--select {
   appearance: none;
   padding-right: 40px;
@@ -120,6 +187,11 @@
 }
 
 .ui-field--error .ui-field__control {
+  border-color: #a42f28;
+  background: #fff7f5;
+}
+
+.ui-field--error .ui-field__native-date {
   border-color: #a42f28;
   background: #fff7f5;
 }
@@ -225,6 +297,7 @@
 .ui-data-table {
   width: 100%;
   min-width: 680px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--text-md);
@@ -240,6 +313,8 @@
   background: #eee9e0;
   color: #514b43;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -249,6 +324,39 @@
   border-bottom: 1px solid #eee8df;
   background: inherit;
   vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-data-table__cell--multiline {
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.ui-data-table__cell--inline > * + * {
+  margin-inline-start: 4px;
+}
+
+.ui-data-table__cell--inline > small:first-child::before {
+  width: 4px;
+  display: inline-block;
+  content: "";
+}
+
+.ui-data-table__cell--stacked > * {
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+.ui-data-table__cell--stacked > * + * {
+  margin-top: 2px;
+}
+
+.ui-data-table__cell--stacked > small:first-child::before {
+  content: none;
 }
 
 .ui-data-table tbody tr:last-child td {
@@ -400,28 +508,23 @@
 }
 
 .ui-badge--neutral {
-  background: #eee9e1;
-  color: #665e54;
+  background: var(--badge-neutral-background);
+  color: var(--badge-neutral-foreground);
 }
 
 .ui-badge--info {
-  background: #eeeafa;
-  color: #644bab;
-}
-
-.ui-badge--warning {
-  background: #fff0df;
-  color: #985314;
+  background: var(--badge-info-background);
+  color: var(--badge-info-foreground);
 }
 
 .ui-badge--success {
-  background: #e4f4eb;
-  color: #277153;
+  background: var(--badge-success-background);
+  color: var(--badge-success-foreground);
 }
 
 .ui-badge--danger {
-  background: #fff0ee;
-  color: #9d3029;
+  background: var(--badge-danger-background);
+  color: var(--badge-danger-foreground);
 }
 
 .ui-toolbar {
