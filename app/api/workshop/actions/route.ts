@@ -1,10 +1,15 @@
 import { env } from "cloudflare:workers";
 import { OPERATOR_ACTOR, requireOperatorApi } from "../../../lib/operator-session";
+import {
+  WORK_STATUS_OPTIONS,
+  WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS,
+  workStatusLabel,
+  type WorkStatus,
+} from "../../../lib/work-status";
 
-type WorkStatus = "received" | "confirmed" | "in_progress" | "ready" | "completed" | "cancelled";
 type Payload = {
   workItemId?: string;
-  status?: WorkStatus;
+  status?: string;
   expectedVersion?: number;
   idempotencyKey?: string;
 };
@@ -16,7 +21,6 @@ type Current = {
 };
 
 const runtimeEnv = env as typeof env & { DB: D1Database };
-const statuses = new Set<WorkStatus>(["received", "confirmed", "in_progress", "ready", "completed", "cancelled"]);
 
 export async function POST(request: Request) {
   const denied = await requireOperatorApi();
@@ -25,10 +29,12 @@ export async function POST(request: Request) {
   try {
     const payload = await request.json() as Payload;
     const workItemId = payload.workItemId?.trim() ?? "";
+    const status = payload.status?.trim() ?? "";
     const idempotencyKey = payload.idempotencyKey?.trim() ?? "";
-    if (!workItemId || !payload.status || !statuses.has(payload.status) || !Number.isInteger(payload.expectedVersion) || !idempotencyKey) {
+    if (!workItemId || !WORK_STATUS_OPTIONS.includes(status as WorkStatus) || !Number.isInteger(payload.expectedVersion) || !idempotencyKey) {
       return Response.json({ error: "작업 상태와 중복방지 키를 확인해주세요." }, { status: 400 });
     }
+    const nextStatus = status as WorkStatus;
 
     const eventType = `work_status_changed:${idempotencyKey}`;
     const prior = await runtimeEnv.DB.prepare(`
@@ -37,7 +43,7 @@ export async function POST(request: Request) {
       WHERE work_item_id=? AND event_type=?
       LIMIT 1
     `).bind(workItemId, eventType).first<{ to_value: string | null }>();
-    if (prior) return Response.json({ ok: true, alreadyApplied: true, status: payload.status });
+    if (prior) return Response.json({ ok: true, alreadyApplied: true, status: nextStatus });
 
     const current = await runtimeEnv.DB.prepare(`
       SELECT id,order_id,work_status,version
@@ -51,6 +57,13 @@ export async function POST(request: Request) {
         latestVersion: current.version,
       }, { status: 409 });
     }
+    const allowedStatuses = WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS[current.work_status];
+    if (!allowedStatuses.includes(nextStatus)) {
+      const error = allowedStatuses.length
+        ? `현재 ${workStatusLabel(current.work_status)} 상태에서는 ${allowedStatuses.map(workStatusLabel).join(", ")} 상태로만 변경할 수 있습니다.`
+        : `현재 ${workStatusLabel(current.work_status)} 상태에서는 작업장에서 상태를 변경할 수 없습니다.`;
+      return Response.json({ error }, { status: 409 });
+    }
 
     const now = new Date().toISOString();
     const results = await runtimeEnv.DB.batch([
@@ -58,7 +71,7 @@ export async function POST(request: Request) {
         UPDATE work_items
         SET work_status=?,version=version+1,updated_at=?
         WHERE id=? AND version=?
-      `).bind(payload.status, now, current.id, current.version),
+      `).bind(nextStatus, now, current.id, current.version),
       runtimeEnv.DB.prepare(`
         INSERT INTO work_item_events(
           id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
@@ -80,12 +93,12 @@ export async function POST(request: Request) {
         current.order_id,
         eventType,
         JSON.stringify({ workStatus: current.work_status }),
-        JSON.stringify({ workStatus: payload.status, idempotencyKey }),
+        JSON.stringify({ workStatus: nextStatus, idempotencyKey }),
         OPERATOR_ACTOR,
         now,
         current.id,
         current.version + 1,
-        payload.status,
+        nextStatus,
         current.id,
         eventType,
       ),
@@ -97,13 +110,13 @@ export async function POST(request: Request) {
         WHERE work_item_id=? AND event_type=?
         LIMIT 1
       `).bind(workItemId, eventType).first<{ id: string }>();
-      if (applied) return Response.json({ ok: true, alreadyApplied: true, status: payload.status });
+      if (applied) return Response.json({ ok: true, alreadyApplied: true, status: nextStatus });
       return Response.json({ error: "작업 상태가 변경되었습니다. 최신 내용을 다시 확인해주세요." }, { status: 409 });
     }
 
     return Response.json({
       ok: true,
-      status: payload.status,
+      status: nextStatus,
       version: current.version + 1,
     });
   } catch (error) {

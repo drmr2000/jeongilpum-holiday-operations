@@ -13,6 +13,10 @@
   padding: 18px 24px 96px;
 }
 
+.workshop-date-toolbar {
+  margin-bottom: 14px;
+}
+
 .workshop-message {
   margin: 0 0 14px;
   padding: 12px;
@@ -120,16 +124,14 @@
   line-height: var(--leading-normal);
 }
 
-.workshop-status-field {
-  min-width: 0;
-}
-
+.workshop-action-summary,
 .workshop-detail-note,
 .workshop-detail-history {
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
 
+.workshop-action-summary h3,
 .workshop-detail-note h3,
 .workshop-detail-history h3 {
   margin: 0 0 8px;
@@ -138,6 +140,7 @@
   line-height: var(--leading-tight);
 }
 
+.workshop-action-summary p,
 .workshop-detail-note p,
 .workshop-detail-history p {
   margin: 0;

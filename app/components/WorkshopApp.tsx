@@ -15,16 +15,15 @@ import {
   Button,
   DataTable,
   FieldInput,
-  FieldSelect,
   Modal,
   Tabs,
   Toolbar,
   useResource,
 } from "../ui";
 import {
-  PIPELINE_WORK_STATUSES,
-  WORK_STATUS_OPTIONS,
+  WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS,
   workStatusLabel,
+  workStatusTone,
   type WorkStatus,
 } from "../lib/work-status";
 import OpsHeader from "./OpsHeader";
@@ -93,29 +92,17 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T12:00:00+09:00`));
 }
 
-function statusTone(status: WorkStatus) {
-  if (status === "ready" || status === "completed") return "success" as const;
-  if (status === "in_progress") return "info" as const;
-  if (status === "cancelled") return "danger" as const;
-  if (status === "confirmed") return "warning" as const;
-  return "neutral" as const;
-}
-
 function historyLabel(type: string) {
   if (type.startsWith("work_status_changed:")) return "작업 상태 변경";
   if (type === "work_item_created") return "작업 생성";
   return type;
 }
 
-function nextWorkAction(status: WorkStatus) {
-  const currentIndex = PIPELINE_WORK_STATUSES.findIndex((value) => value === status);
-  const nextStatus = PIPELINE_WORK_STATUSES[currentIndex + 1];
-  if (currentIndex < 0 || !nextStatus) return null;
-
-  if (nextStatus === "confirmed") return { status: nextStatus, label: "작업 준비", notice: "작업 준비 상태로 변경했습니다." };
+function workshopAction(status: WorkStatus) {
+  const nextStatus = WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS[status][0];
   if (nextStatus === "in_progress") return { status: nextStatus, label: "작업 시작", notice: "작업을 시작했습니다." };
   if (nextStatus === "ready") return { status: nextStatus, label: "작업 완료", notice: "작업을 완료했습니다." };
-  return { status: nextStatus, label: "수령 완료", notice: "수령 완료 상태로 변경했습니다." };
+  return null;
 }
 
 function workItemGroups(items: WorkItem[], orderByTime: boolean) {
@@ -164,8 +151,8 @@ export default function WorkshopApp() {
   const [delivery, setDelivery] = useState<WorkItem[]>([]);
   const [products, setProducts] = useState<ProductTotal[]>([]);
   const [selected, setSelected] = useState<WorkItem | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<WorkStatus>("received");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkActionModalOpen, setBulkActionModalOpen] = useState(false);
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -193,7 +180,6 @@ export default function WorkshopApp() {
 
   const openDetail = (item: WorkItem) => {
     setSelected(item);
-    setSelectedStatus(item.workStatus);
   };
 
   const updateWorkStatuses = async (
@@ -246,15 +232,10 @@ export default function WorkshopApp() {
     }
   };
 
-  const updateStatus = async () => {
-    if (!selected) return;
-    await updateWorkStatuses([selected], selectedStatus, "작업 상태를 저장했습니다.");
-  };
-
   const statusColumn: DataTableColumn<WorkItem> = {
     id: "status",
     header: "작업 상태",
-    cell: (item) => <Badge tone={statusTone(item.workStatus)}>{workStatusLabel(item.workStatus)}</Badge>,
+    cell: (item) => <Badge tone={workStatusTone(item.workStatus)}>{workStatusLabel(item.workStatus)}</Badge>,
     sortValue: (item) => item.workStatus,
     width: "132px",
   };
@@ -263,19 +244,19 @@ export default function WorkshopApp() {
     id: "action",
     header: "처리",
     cell: (item) => {
-      const action = nextWorkAction(item.workStatus);
-      if (!action) return <span>처리 완료</span>;
+      const action = workshopAction(item.workStatus);
+      if (!action) return <span aria-label="작업장 처리 없음">-</span>;
+      const isBusy = busyIds.includes(item.id);
       return (
         <Button
           size="sm"
-          variant={action.status === "in_progress" || action.status === "ready" ? "primary" : "ghost"}
-          disabled={busyIds.includes(item.id)}
+          disabled={isBusy}
           onClick={(event) => {
             event.stopPropagation();
             void updateWorkStatuses([item], action.status, action.notice);
           }}
         >
-          {busyIds.includes(item.id) ? "처리 중" : action.label}
+          {isBusy ? "처리 중" : action.label}
         </Button>
       );
     },
@@ -343,12 +324,16 @@ export default function WorkshopApp() {
   const selectedWorkItems = activeRows.filter((item) => selectedIds.includes(item.id));
   const selectedBusy = selectedWorkItems.some((item) => busyIds.includes(item.id));
   const selectedForStatus = (status: WorkStatus) => selectedWorkItems.filter(
-    (item) => nextWorkAction(item.workStatus)?.status === status,
+    (item) => workshopAction(item.workStatus)?.status === status,
   );
-  const preparingItems = selectedForStatus("confirmed");
   const startingItems = selectedForStatus("in_progress");
   const completingItems = selectedForStatus("ready");
-  const receivingItems = selectedForStatus("completed");
+  const selectedAction = selected ? workshopAction(selected.workStatus) : null;
+
+  const runBulkAction = async (items: WorkItem[], status: WorkStatus, successMessage: string) => {
+    await updateWorkStatuses(items, status, successMessage);
+    setBulkActionModalOpen(false);
+  };
 
   return (
     <div className="workshop-app">
@@ -368,17 +353,18 @@ export default function WorkshopApp() {
                 onChange={(event) => {
                   setDate(event.target.value);
                   setSelectedIds([]);
+                  setBulkActionModalOpen(false);
                 }}
               />
             }
             selectionCount={selectedWorkItems.length || undefined}
             actions={selectedWorkItems.length ? (
-              <>
-                <Button size="sm" variant="ghost" disabled={selectedBusy || !preparingItems.length} onClick={() => void updateWorkStatuses(preparingItems, "confirmed", "작업 준비 상태로 변경했습니다.")}>작업 준비</Button>
-                <Button size="sm" disabled={selectedBusy || !startingItems.length} onClick={() => void updateWorkStatuses(startingItems, "in_progress", "작업을 시작했습니다.")}>작업 시작</Button>
-                <Button size="sm" disabled={selectedBusy || !completingItems.length} onClick={() => void updateWorkStatuses(completingItems, "ready", "작업을 완료했습니다.")}>작업 완료</Button>
-                <Button size="sm" variant="ghost" disabled={selectedBusy || !receivingItems.length} onClick={() => void updateWorkStatuses(receivingItems, "completed", "수령 완료 상태로 변경했습니다.")}>수령 완료</Button>
-              </>
+              <Button
+                leadingIcon={<ClipboardList size={16} />}
+                onClick={() => setBulkActionModalOpen(true)}
+              >
+                선택 작업 처리
+              </Button>
             ) : null}
           />
         </section>
@@ -400,6 +386,7 @@ export default function WorkshopApp() {
             onValueChange={(value) => {
               setTab(value as WorkshopTab);
               setSelectedIds([]);
+              setBulkActionModalOpen(false);
             }}
           />
         </div>
@@ -435,9 +422,17 @@ export default function WorkshopApp() {
         footer={(
           <>
             <Button variant="ghost" onClick={() => setSelected(null)}>닫기</Button>
-            <Button disabled={busyIds.includes(selected?.id ?? "") || !selected} onClick={() => void updateStatus()} leadingIcon={<ClipboardList size={16} />}>
-              {busyIds.includes(selected?.id ?? "") ? "저장 중" : "작업 상태 저장"}
-            </Button>
+            {selectedAction ? (
+              <Button
+                disabled={busyIds.includes(selected?.id ?? "") || !selected}
+                onClick={() => {
+                  if (selected) void updateWorkStatuses([selected], selectedAction.status, selectedAction.notice);
+                }}
+                leadingIcon={<ClipboardList size={16} />}
+              >
+                {busyIds.includes(selected?.id ?? "") ? "처리 중" : selectedAction.label}
+              </Button>
+            ) : null}
           </>
         )}
       >
@@ -448,17 +443,10 @@ export default function WorkshopApp() {
               <p><span>작업 시각</span><strong>{selected.deliveryMethod === "delivery" ? selected.dueAt.slice(0, 10) : `${selected.dueAt.slice(0, 10)} ${formatTime(selected.dueAt)}`}</strong></p>
               {selected.deliveryMethod === "delivery" ? <p><span>배송지</span><strong>{selected.address || "주소 미입력"}</strong></p> : null}
             </div>
-            <FieldSelect
-              id={`work-status-${selected.id}`}
-              className="workshop-status-field"
-              label="작업 상태"
-              value={selectedStatus}
-              onChange={(event) => setSelectedStatus(event.target.value as WorkStatus)}
-            >
-              {WORK_STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>{workStatusLabel(status)}</option>
-              ))}
-            </FieldSelect>
+            <section className="workshop-action-summary">
+              <h3>작업 처리</h3>
+              <p>{selectedAction ? `${selectedAction.label}을 실행할 수 있습니다.` : "작업장에서 실행할 수 있는 작업이 없습니다."}</p>
+            </section>
             {selected.note ? <section className="workshop-detail-note"><h3>작업 요청사항</h3><p>{selected.note}</p></section> : null}
             <section className="workshop-detail-history">
               <h3>작업 이력</h3>
@@ -475,6 +463,39 @@ export default function WorkshopApp() {
             </section>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={bulkActionModalOpen}
+        title="선택 작업 처리"
+        description={selectedWorkItems.length ? `${selectedWorkItems.length}개 작업을 선택했습니다.` : "선택한 작업이 없습니다."}
+        onClose={() => setBulkActionModalOpen(false)}
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => setBulkActionModalOpen(false)}>닫기</Button>
+            {startingItems.length ? (
+              <Button
+                disabled={selectedBusy}
+                onClick={() => void runBulkAction(startingItems, "in_progress", "작업을 시작했습니다.")}
+              >
+                {selectedBusy ? "처리 중" : `작업 시작 ${startingItems.length}건`}
+              </Button>
+            ) : null}
+            {completingItems.length ? (
+              <Button
+                disabled={selectedBusy}
+                onClick={() => void runBulkAction(completingItems, "ready", "작업을 완료했습니다.")}
+              >
+                {selectedBusy ? "처리 중" : `작업 완료 ${completingItems.length}건`}
+              </Button>
+            ) : null}
+          </>
+        )}
+      >
+        <section className="workshop-action-summary">
+          <h3>변경 대상</h3>
+          <p>작업 시작 {startingItems.length}건 · 작업 완료 {completingItems.length}건</p>
+        </section>
       </Modal>
     </div>
   );
