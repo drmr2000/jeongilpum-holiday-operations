@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, ChevronsUpDown, GripVertical } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
-import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
+import type { DragEvent, KeyboardEvent, ReactNode } from "react";
 
 export type DataTableSortValue = string | number | Date | null | undefined;
 
@@ -28,7 +28,6 @@ export type DataTableProps<Row> = {
   columns: DataTableColumn<Row>[];
   getRowId: (row: Row) => string;
   groups?: DataTableGroup<Row>[];
-  rowBackground?: (row: Row) => string | undefined;
   rowClassName?: (row: Row) => string | undefined;
   onRowClick?: (row: Row) => void;
   onRowDragOver?: (row: Row, event: DragEvent<HTMLTableRowElement>) => void;
@@ -66,7 +65,6 @@ export function DataTable<Row>({
   columns,
   getRowId,
   groups,
-  rowBackground,
   rowClassName,
   onRowClick,
   onRowDragOver,
@@ -141,9 +139,6 @@ export function DataTable<Row>({
   const renderRow = (row: Row) => {
     const id = getRowId(row);
     const clickable = Boolean(onRowClick);
-    const style: CSSProperties | undefined = rowBackground?.(row)
-      ? { backgroundColor: rowBackground(row) }
-      : undefined;
     return (
       <tr
         key={id}
@@ -152,7 +147,6 @@ export function DataTable<Row>({
           groups ? "ui-data-table__row--grouped" : "",
           rowClassName?.(row) ?? "",
         ].filter(Boolean).join(" ")}
-        style={style}
         tabIndex={clickable ? 0 : undefined}
         onClick={clickable ? () => onRowClick?.(row) : undefined}
         onKeyDown={(event) => onRowKeyDown(event, row)}

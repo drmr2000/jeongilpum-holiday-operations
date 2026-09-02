@@ -718,7 +718,7 @@ export default function SettingsApp() {
       cell: (product) => {
         if (product.dailyLimit === null) return <Badge tone="neutral">무제한</Badge>;
         const remaining = Math.max(0, product.dailyLimit - product.reservedQuantity);
-        return <Badge tone={remaining === 0 ? "danger" : remaining <= product.dailyLimit * 0.25 ? "danger" : "success"}>
+        return <Badge tone={remaining <= product.dailyLimit * 0.25 ? "danger" : "success"}>
           {remaining.toLocaleString("ko-KR")}세트
         </Badge>;
       },
