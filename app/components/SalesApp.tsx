@@ -17,11 +17,19 @@ import {
   useResource,
   type DataTableColumn,
 } from "../ui";
-import { PIPELINE_WORK_STATUSES, WORK_STATUS_LABELS, WORK_STATUS_OPTIONS, type PipelineWorkStatus, type WorkStatus } from "../lib/work-status";
+import {
+  PIPELINE_WORK_STATUSES,
+  WORK_STATUS_LABELS,
+  WORK_STATUS_OPTIONS,
+  paymentStatusTone,
+  workStatusTone,
+  type PaymentStatus,
+  type PipelineWorkStatus,
+  type WorkStatus,
+} from "../lib/work-status";
 import "../sales/work-table.css";
 
 type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
-type PaymentStatus = "unpaid" | "partial" | "paid";
 type Tab = "work" | "customers";
 
 type WorkItem = {
@@ -149,15 +157,6 @@ const PAYMENT_LABELS: Record<PaymentStatus, string> = {
   paid: "결제완료",
 };
 
-const WORK_STATUS_BACKGROUNDS: Record<WorkStatus, string> = {
-  received: "#fff8eb",
-  confirmed: "#f7f3eb",
-  in_progress: "#eef6fb",
-  ready: "#eff8f0",
-  completed: "#f1f3f1",
-  cancelled: "#f5f5f5",
-};
-
 function todayInSeoul() {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Seoul",
@@ -218,8 +217,11 @@ function urgentWorkItem(item: WorkItem) {
   return Number.isFinite(dueAt) && dueAt <= Date.now() + 30 * 60_000;
 }
 
-function workItemBackground(item: WorkItem) {
-  return urgentWorkItem(item) ? "#fff0d9" : WORK_STATUS_BACKGROUNDS[item.workStatus];
+function workItemUrgencyClass(item: WorkItem) {
+  if (!urgentWorkItem(item)) return undefined;
+  return item.customerArrivedAt || Date.parse(item.dueAt) <= Date.now()
+    ? "sales-work-table__row--urgent"
+    : "sales-work-table__row--soon";
 }
 
 function draftFor(item: WorkItem): WorkDraft {
@@ -578,27 +580,32 @@ export default function SalesApp() {
       cell: (item) => <><b>{item.dueAt.slice(0, 10)}</b><small>{item.deliveryMethod === "delivery" ? "발송 예정" : item.dueAt.slice(11, 16)}</small></>,
       sortValue: (item) => item.dueAt,
       width: "118px",
+      cellLayout: "stacked",
     },
     {
       id: "customer",
       header: "주문자",
-      cell: (item) => <div className="sales-work-table__customer"><b>{item.buyerName}</b><small>{item.buyerPhone} · {item.orderNo}</small></div>,
+      cell: (item) => <><b>{item.buyerName}</b><small>{item.buyerPhone} · {item.orderNo}</small></>,
       sortValue: (item) => item.buyerName,
       width: "180px",
+      cellLayout: "stacked",
     },
     {
       id: "product",
       header: "상품",
       cell: (item) => <><b>{item.productName}</b>{item.productDailyLimit !== null && item.productScheduledQuantity > item.productDailyLimit ? <small className="sales-work-table__overage">일일 수량 초과 {item.productScheduledQuantity}/{item.productDailyLimit}</small> : null}</>,
       sortValue: (item) => item.productName,
+      cellLayout: "stacked",
+      multiline: true,
     },
     {
       id: "quantity",
       header: "수량",
-      cell: (item) => <>{item.quantity}<small>{won(item.lineTotal)}</small></>,
+      cell: (item) => <><b>{item.quantity}개</b><small>{won(item.lineTotal)}</small></>,
       sortValue: (item) => item.quantity,
       align: "right",
       width: "90px",
+      cellLayout: "stacked",
     },
     {
       id: "delivery",
@@ -610,15 +617,16 @@ export default function SalesApp() {
     {
       id: "status",
       header: "작업상태",
-      cell: (item) => <Badge tone={item.workStatus === "ready" || item.workStatus === "completed" ? "success" : item.workStatus === "received" ? "warning" : "info"}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
+      cell: (item) => <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
       sortValue: (item) => item.workStatus,
       width: "94px",
     },
     {
       id: "payment",
       header: "결제",
-      cell: (item) => <><Badge tone={item.paymentStatus === "paid" ? "success" : item.paymentStatus === "partial" ? "warning" : "danger"}>{PAYMENT_LABELS[item.paymentStatus]}</Badge><small>{won(item.paidAmount)} / {won(item.totalAmount)}</small></>,
+      cell: (item) => <><Badge tone={paymentStatusTone(item.paymentStatus)}>{PAYMENT_LABELS[item.paymentStatus]}</Badge><small>{won(item.paidAmount)} / {won(item.totalAmount)}</small></>,
       width: "118px",
+      cellLayout: "stacked",
     },
     {
       id: "actions",
@@ -767,8 +775,7 @@ export default function SalesApp() {
               rows={workItems}
               columns={columns}
               getRowId={(item) => item.id}
-              rowBackground={workItemBackground}
-              rowClassName={(item) => item.customerArrivedAt ? "sales-work-table__row--arrived" : undefined}
+              rowClassName={workItemUrgencyClass}
               onRowClick={setSelectedWorkItem}
               selectedIds={selectedIds}
               onSelectedIdsChange={setSelectedIds}
@@ -892,20 +899,30 @@ function BulkActions({
   const [paidAmount, setPaidAmount] = useState("0");
 
   return (
-    <div className="sales-work-table__bulk-actions">
-      <FieldSelect id="sales-bulk-work-status" label="작업 상태" value={nextStatus} onChange={(event) => setNextStatus(event.target.value as WorkStatus)}>
-        {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </FieldSelect>
-      <Button size="sm" variant="ghost" onClick={() => void onRun({ action: "status", workStatus: nextStatus }, "작업 상태를 일괄 변경했습니다.")}>상태 변경</Button>
-      <FieldInput id="sales-bulk-due-at" label="수령일시" type="datetime-local" value={nextDueAt} onChange={(event) => setNextDueAt(event.target.value)} />
-      <Button size="sm" variant="ghost" disabled={!nextDueAt} onClick={() => void onRun({ action: "due_at", dueAt: toDueAt(nextDueAt) }, "수령일시를 일괄 변경했습니다.")}>수령일시 변경</Button>
-      <FieldSelect id="sales-bulk-payment-status" label="결제 상태" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)}>
-        {Object.entries(PAYMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </FieldSelect>
-      <FieldInput id="sales-bulk-paid-amount" label="결제 금액" type="number" min="0" step="1" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} />
-      <Button size="sm" variant="ghost" disabled={!Number.isInteger(Number(paidAmount)) || Number(paidAmount) < 0} onClick={() => void onRun({ action: "payment", paymentStatus, paidAmount: Number(paidAmount) }, "결제 상태를 일괄 변경했습니다.")}>결제 변경</Button>
-      <Button size="sm" variant="ghost" onClick={onDuplicate}>복제</Button>
-      <Button size="sm" variant="danger" onClick={onDelete}>삭제</Button>
+    <div className="sales-work-table__bulk-actions" aria-label="선택 작업 일괄 처리">
+      <div className="sales-work-table__bulk-action-groups">
+        <div className="sales-work-table__bulk-action" role="group" aria-label="작업 상태 일괄 변경">
+          <FieldSelect id="sales-bulk-work-status" label="작업 상태" value={nextStatus} onChange={(event) => setNextStatus(event.target.value as WorkStatus)}>
+            {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </FieldSelect>
+          <Button size="sm" variant="ghost" onClick={() => void onRun({ action: "status", workStatus: nextStatus }, "작업 상태를 일괄 변경했습니다.")}>상태 변경</Button>
+        </div>
+        <div className="sales-work-table__bulk-action" role="group" aria-label="수령일시 일괄 변경">
+          <FieldInput id="sales-bulk-due-at" label="수령일시" type="datetime-local" value={nextDueAt} onChange={(event) => setNextDueAt(event.target.value)} />
+          <Button size="sm" variant="ghost" disabled={!nextDueAt} onClick={() => void onRun({ action: "due_at", dueAt: toDueAt(nextDueAt) }, "수령일시를 일괄 변경했습니다.")}>수령일시 변경</Button>
+        </div>
+        <div className="sales-work-table__bulk-action sales-work-table__bulk-action--payment" role="group" aria-label="결제 일괄 변경">
+          <FieldSelect id="sales-bulk-payment-status" label="결제 상태" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)}>
+            {Object.entries(PAYMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </FieldSelect>
+          <FieldInput id="sales-bulk-paid-amount" label="결제 금액" type="number" min="0" step="1" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} />
+          <Button size="sm" variant="ghost" disabled={!Number.isInteger(Number(paidAmount)) || Number(paidAmount) < 0} onClick={() => void onRun({ action: "payment", paymentStatus, paidAmount: Number(paidAmount) }, "결제 정보를 일괄 변경했습니다.")}>결제 변경</Button>
+        </div>
+      </div>
+      <div className="sales-work-table__bulk-immediate-actions" aria-label="즉시 실행">
+        <Button size="sm" variant="ghost" onClick={onDuplicate}>복제</Button>
+        <Button size="sm" variant="danger" onClick={onDelete}>삭제</Button>
+      </div>
     </div>
   );
 }
@@ -967,7 +984,7 @@ function CustomerTable({
                             <span>{item.dueAt.slice(0, 10)} · {item.deliveryMethod === "delivery" ? "발송" : item.dueAt.slice(11, 16)}</span>
                             <b>{item.productName} × {item.quantity}</b>
                             <span>{DELIVERY_LABELS[item.deliveryMethod]}</span>
-                            <Badge tone={item.workStatus === "ready" || item.workStatus === "completed" ? "success" : "info"}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>
+                            <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>
                           </button>
                         </div>
                       )) : <p className="sales-work-table__empty">등록된 작업 항목이 없습니다.</p> : null}
