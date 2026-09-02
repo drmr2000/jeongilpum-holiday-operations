@@ -41,9 +41,21 @@
 .settings-category-heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 6px 12px;
+}
+
+.settings-category-heading__title,
+.settings-category-heading__form {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-category-heading__form {
+  flex: 1 1 220px;
 }
 
 .settings-category-heading h2 {
@@ -52,6 +64,32 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-strong);
   line-height: var(--leading-tight);
+}
+
+.settings-category-heading__form input {
+  width: clamp(160px, 24vw, 280px);
+  min-height: 32px;
+  border: 1px solid #d2c9bd;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 0 8px;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-tight);
+}
+
+.settings-category-heading__form input:focus {
+  border-color: var(--wine);
+  outline: 0;
+}
+
+.settings-category-heading__edit.ui-button--icon-only {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
 }
 
 .settings-category-heading span {

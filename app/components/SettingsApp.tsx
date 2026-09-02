@@ -1,8 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { FolderPlus, GripVertical, ImageOff, Plus, Save, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { FolderPlus, GripVertical, ImageOff, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import OpsHeader from "./OpsHeader";
 import {
@@ -242,6 +242,10 @@ export default function SettingsApp() {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
+  const [inlineCategoryEdit, setInlineCategoryEdit] = useState<CategoryRecord | null>(null);
+  const [inlineCategoryName, setInlineCategoryName] = useState("");
+  const [inlineCategorySaving, setInlineCategorySaving] = useState(false);
+  const inlineCategoryInput = useRef<HTMLInputElement>(null);
   const [deletingCategory, setDeletingCategory] = useState<CategoryRecord | null>(null);
   const [notice, setNotice] = useState("");
   const {
@@ -267,6 +271,12 @@ export default function SettingsApp() {
   const selectedProducts = products.filter((product) => selectedIds.includes(product.id));
   const loading = catalogLoading || settingsLoading;
   const error = catalogError ?? settingsError;
+
+  useEffect(() => {
+    if (!inlineCategoryEdit) return;
+    inlineCategoryInput.current?.focus();
+    inlineCategoryInput.current?.select();
+  }, [inlineCategoryEdit]);
 
   const reload = async () => {
     await Promise.all([reloadCatalog(), reloadSettings()]);
@@ -531,6 +541,25 @@ export default function SettingsApp() {
     }
   };
 
+  const persistCategoryName = async (category: CategoryRecord, name: string) => {
+    await settingsMutation("PATCH", {
+      type: "category-update",
+      id: category.id,
+      expectedVersion: category.version,
+      name,
+    }, "카테고리 이름을 저장하지 못했습니다.");
+    await reload();
+    resetPendingMoves();
+  };
+
+  const clearCategoryDraft = (categoryId: string) => {
+    setCategoryDrafts((current) => {
+      const next = { ...current };
+      delete next[categoryId];
+      return next;
+    });
+  };
+
   const saveCategory = async (category: CategoryRecord) => {
     const name = (categoryDrafts[category.id] ?? category.name).trim();
     if (!name) {
@@ -542,24 +571,56 @@ export default function SettingsApp() {
     setSaving(true);
     setNotice("");
     try {
-      await settingsMutation("PATCH", {
-        type: "category-update",
-        id: category.id,
-        expectedVersion: category.version,
-        name,
-      }, "카테고리 이름을 저장하지 못했습니다.");
-      await reload();
-      resetPendingMoves();
-      setCategoryDrafts((current) => {
-        const next = { ...current };
-        delete next[category.id];
-        return next;
-      });
+      await persistCategoryName(category, name);
+      clearCategoryDraft(category.id);
       setNotice(`${category.name} 카테고리를 ${name}(으)로 변경했습니다.`);
     } catch (caught) {
       setNotice(caught instanceof Error ? caught.message : "카테고리 이름을 저장하지 못했습니다.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openInlineCategoryEditor = (category: CategoryRecord) => {
+    if (saving || inlineCategorySaving) return;
+    setInlineCategoryEdit(category);
+    setInlineCategoryName(category.name);
+    setNotice("");
+  };
+
+  const closeInlineCategoryEditor = () => {
+    if (inlineCategorySaving) return;
+    setInlineCategoryEdit(null);
+    setInlineCategoryName("");
+  };
+
+  const saveInlineCategory = async () => {
+    if (!inlineCategoryEdit || inlineCategorySaving) return;
+    const category = inlineCategoryEdit;
+    const name = inlineCategoryName.trim();
+
+    if (!name) {
+      closeInlineCategoryEditor();
+      setNotice("카테고리 이름을 입력해주세요.");
+      return;
+    }
+    if (name === category.name) {
+      closeInlineCategoryEditor();
+      return;
+    }
+
+    setInlineCategorySaving(true);
+    setNotice("");
+    try {
+      await persistCategoryName(category, name);
+      clearCategoryDraft(category.id);
+      setNotice(`${category.name} 카테고리를 ${name}(으)로 변경했습니다.`);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "카테고리 이름을 저장하지 못했습니다.");
+    } finally {
+      setInlineCategoryEdit(null);
+      setInlineCategoryName("");
+      setInlineCategorySaving(false);
     }
   };
 
@@ -657,7 +718,7 @@ export default function SettingsApp() {
       cell: (product) => {
         if (product.dailyLimit === null) return <Badge tone="neutral">무제한</Badge>;
         const remaining = Math.max(0, product.dailyLimit - product.reservedQuantity);
-        return <Badge tone={remaining === 0 ? "danger" : remaining <= product.dailyLimit * 0.25 ? "warning" : "success"}>
+        return <Badge tone={remaining === 0 ? "danger" : remaining <= product.dailyLimit * 0.25 ? "danger" : "success"}>
           {remaining.toLocaleString("ko-KR")}세트
         </Badge>;
       },
@@ -713,11 +774,63 @@ export default function SettingsApp() {
       {!error && (catalog || settings) ? <section className="settings-section">
         <DataTable
           columns={columns}
-          groups={productGroups(visibleProducts).map(({ category, rows }) => ({
-            id: category,
-            header: <div className="settings-category-heading"><h2>{category}</h2><span>{rows.length}개</span></div>,
-            rows,
-          }))}
+          groups={productGroups(visibleProducts).map(({ category, rows }) => {
+            const categoryRecord = categories.find((item) => item.name === category);
+            const editingInline = inlineCategoryEdit?.id === categoryRecord?.id;
+            return {
+              id: category,
+              header: <div className="settings-category-heading">
+                <div className="settings-category-heading__title">
+                  {editingInline ? <div className="settings-category-heading__form">
+                    <input
+                      aria-label={`${category} 카테고리 이름`}
+                      disabled={inlineCategorySaving}
+                      ref={inlineCategoryInput}
+                      value={inlineCategoryName}
+                      onChange={(event) => setInlineCategoryName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          closeInlineCategoryEditor();
+                          return;
+                        }
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void saveInlineCategory();
+                        }
+                      }}
+                    />
+                    <Button
+                      aria-label={`${category} 카테고리 이름 저장`}
+                      className="settings-category-heading__edit"
+                      disabled={inlineCategorySaving}
+                      iconOnly
+                      leadingIcon={<Save />}
+                      size="sm"
+                      title="카테고리 이름 저장"
+                      variant="ghost"
+                      onClick={() => void saveInlineCategory()}
+                    />
+                  </div> : <>
+                    <h2>{category}</h2>
+                    {categoryRecord ? <Button
+                      aria-label={`${category} 카테고리 이름 수정`}
+                      className="settings-category-heading__edit"
+                      disabled={saving || inlineCategorySaving}
+                      iconOnly
+                      leadingIcon={<Pencil />}
+                      size="sm"
+                      title="카테고리 이름 수정"
+                      variant="ghost"
+                      onClick={() => openInlineCategoryEditor(categoryRecord)}
+                    /> : null}
+                  </>}
+                </div>
+                <span>{rows.length}개</span>
+              </div>,
+              rows,
+            };
+          })}
           getRowId={(product) => product.id}
           onRowClick={openEditor}
           onRowDragOver={(product, event) => {
