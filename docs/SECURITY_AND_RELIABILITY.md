@@ -2,92 +2,58 @@
 
 ## 인증과 권한
 
-- 고객 kiosk와 운영자 surface를 분리한다.
-- 운영 page와 운영 API는 HttpOnly 공용 운영 암호 세션을 확인한다.
-- 암호 원문은 Worker 환경값에서만 읽고 PBKDF2-HMAC-SHA256 결과만 쿠키에 저장한다.
-- 고객 결제·미수 장부는 같은 운영 세션을 사용한다.
-- 환경변수가 비어 있으면 전체 허용이 아니라 권한거부가 기본값이다.
+- 키오스크 주문 접수는 공개 흐름입니다.
+- 운영자는 passcode를 `POST /api/operator-session`으로 제출합니다.
+- passcode는 `OPERATOR_PASSCODE`에서 읽고 PBKDF2-HMAC-SHA-256으로 검증합니다.
+- 성공한 세션은 `jip_operator` HttpOnly, `SameSite=Lax` 쿠키로 유지됩니다.
+- HTTPS 요청에서만 쿠키에 `Secure` 속성이 추가됩니다.
+- 운영 API는 세션이 없거나 유효하지 않으면 `401`을 반환합니다.
 
-## PII
+운영 인증은 사용자 ID, 이메일 allowlist, ChatGPT 로그인, Supabase Auth를 사용하지 않습니다.
 
-PII에는 고객명, 회사명, 전화번호, 수령인, 주소, 상세주소가 포함된다.
+## 비밀값과 개인정보
 
-- browser UI와 필요한 API response에서만 최소 범위로 사용한다.
-- console, structured log, audit summary에 PII를 넣지 않는다.
-- 작업장에는 주소·결제정보를 필요 이상 노출하지 않는다.
-- package QR에는 PII를 넣지 않는다.
-- 테스트 고객은 식별 가능한 test 이름을 쓰되 실제 개인정보를 쓰지 않는다.
-
-허용 로그 예:
-
-- order ID, fulfillment ID, idempotency key
-- selected date, status, response count, HTTP status
-- production batch ID, Skin Pack ID, package ID
+- `.dev.vars`의 `OPERATOR_PASSCODE`는 gitignored입니다.
+- 실제 passcode, token, API key를 문서·로그·client bundle에 기록하지 않습니다.
+- 고객 이름, 전화번호, 수령인, 배송주소는 필요한 화면과 API 응답에서만 사용합니다.
+- package QR과 CSV는 고객 개인정보를 포함하지 않습니다.
+- 운영 장애 조사 중에도 고객 개인정보를 로그에 복사하지 않습니다.
 
 ## 데이터 무결성
 
-- D1 batch로 다중 테이블 변경을 묶는다.
-- unique constraint를 idempotency의 최종 방어선으로 사용한다.
-- optimistic version update로 stale write를 막는다.
-- 상태전환은 허용된 이전 상태에서만 실행한다.
-- reservation은 한도 안에서만 active quantity가 생성되도록 DB 조건을 둔다.
-- package assembly는 모든 필요팩을 확보할 때만 완료한다.
-- assigned Skin Pack은 두 package에 연결할 수 없다.
+- 주문 생성은 `orders`, `work_items`, `work_item_events`를 D1 `batch()`로 기록합니다.
+- `orders.idempotency_key` unique 제약이 재제출을 방어합니다.
+- 작업, 주문, 결제 변경은 version 값을 확인합니다.
+- 다중 선택 변경은 모든 선택 작업의 version을 확인합니다.
+- 결제 상태와 입금액은 주문 단위로 수동 수정합니다.
+- 취소 사유를 포함한 상태 변경과 결제 변경은 이벤트로 기록합니다.
 
-## 감사와 삭제 정책
+## 작업 이력과 삭제
 
-- 운영 주문을 hard delete하지 않는다.
-- 취소는 `cancelled`와 event로 남긴다.
-- 결제기록과 외상기록을 테스트 종료 후에도 삭제하지 않는다.
-- label 교체는 과거 version을 void 상태로 보존한다.
-- package reassignment는 before/after와 reason을 남긴다.
+- `work_item_events.order_id`는 필수입니다.
+- 작업 행 삭제 후에도 이벤트는 남고 `work_item_id`만 `NULL`이 될 수 있습니다.
+- 작업 삭제 handler는 package와 Skin Pack 배정을 정리하는 D1 batch를 사용합니다.
+- 삭제된 작업의 주문 합계와 버전을 같은 요청에서 갱신합니다.
 
 ## cache와 최신성
 
-- 운영 API는 no-store/no-cache다.
-- Sales와 Workshop은 2.5초 polling과 focus/online refetch를 사용한다.
-- 사용자 화면에 표시된 state만 신뢰해 DB update하지 않고 expected version을 함께 전송한다.
-- background tab timer throttling은 정상 브라우저 동작이다.
+- 운영 조회 API는 `no-store` 응답을 사용합니다.
+- Sales는 3초, Workshop은 2.5초 주기의 resource refresh를 사용합니다.
+- focus와 online 상태에서 다시 조회합니다.
+- 브라우저에 오래 남은 데이터를 기준으로 수정하지 않고 `expectedVersion`을 보냅니다.
 
 ## 입력 검증
 
-- 전화번호 정규화와 최소 길이
-- ISO date, pickup time, shipping date
-- postal code와 주소 필수값
-- 맞춤예산 최소 200,000원
-- 수량 양수와 합리적 상한
-- 결제금액 1원 이상 정수. 잔액 초과분은 선수금으로 유지
-- Skin Pack 중량 양수
-- 이력번호 허용 길이
-- CSV filename과 path parameter 안전화
-
-## secrets
-
-- `.env*` 실제 값은 commit하지 않는다.
-- service role, token, bypass bearer token을 문서·log·client에 노출하지 않는다.
-- `.openai/hosting.json`에는 논리 binding만 유지한다.
-- Production 환경값은 Sites runtime settings에서 관리한다.
-- `OPERATOR_PASSCODE`는 client bundle에 넣지 않는다.
+- 주문 상품, 수량, 날짜, 수령방법, 배송 수령인·주소를 서버에서 검증합니다.
+- 방문예약 시간은 08:00부터 21:00 사이의 30분 단위를 검증합니다.
+- 맞춤주문은 허용 category와 최소 예산을 검증합니다.
+- 작업 항목은 수령일시, 수령방법, 상품·단가·수량, 수령인·주소, 상태를 검증합니다.
+- 결제 금액은 0 이상의 정수여야 합니다.
+- 일괄 변경은 1개 이상 100개 이하 작업만 허용합니다.
 
 ## 장애 경계
 
-- Kakao 주소검색 장애: 직접주소 입력 fallback
-- polling 장애: focus, online, 수동 새로고침
-- 주문 batch 실패: 완료화면 금지, draft 유지
-- Realtime 지연: API와 D1에서 order/fulfillment 흐름을 단계별 추적
-- migration 실패: 앱 배포 중단
-- provider migration 제약: statement 단위로 실행 가능한 SQL 유지
-
-## 운영 점검 항목
-
-- order ID와 idempotency key
-- fulfillment ID, pickup_at 또는 ship_date
-- order status와 version
-- `/api/orders` response 포함 여부
-- selected date filter
-- polling 실행과 state update
-- payment/credit event
-- reservation release
-- package/Skin Pack assignment
-
-운영 장애 조사에서 고객 PII를 진단 로그에 복사하지 않는다.
+- 주문 batch가 실패하면 주문 완료를 표시하지 않습니다.
+- 주소 검색 스크립트가 실패하면 직접입력으로 진행합니다.
+- version 충돌은 `409`으로 반환하고 최신 조회를 요구합니다.
+- `0007_work-items-core.sql`은 과거 테이블을 제거하므로 기존 D1에 대한 무검증 적용을 금지합니다.

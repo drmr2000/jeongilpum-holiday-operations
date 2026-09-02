@@ -1,3 +1,7 @@
+보관 문서 안내
+
+이 문서는 과거 기술 개요 기록입니다. Supabase, Postgres, `fulfillments`, `sales_seasons`, 고객 장부는 현재 구현을 설명하지 않습니다. 현재 구조는 상위 `docs/`의 as-built 문서와 source code를 기준으로 판단합니다.
+
 정일품 웹앱 전체 시스템 기술 구조 및 외부 연동 정리
 작성 기준: 2026-08-30
 

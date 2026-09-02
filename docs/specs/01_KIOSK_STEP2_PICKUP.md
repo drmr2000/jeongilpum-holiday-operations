@@ -1,4 +1,8 @@
-# 고객 메인화면 수정 01 — Step 2 / 방문수령
+# Archived specification
+
+> 이 문서는 과거 요구사항 기록입니다. 현재 키오스크는 고정된 흐름이며, 현재 구조는 상위 `docs/`의 as-built 문서와 source code를 기준으로 판단합니다.
+
+# 고객 메인화면 수정 01: Step 2 / 방문수령
 
 ## 1. Step 2 제목
 

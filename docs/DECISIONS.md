@@ -1,67 +1,60 @@
 # 기술 결정 기록
 
-새로운 결정은 날짜, 배경, 결정, 결과, 대안을 이 문서에 추가한다. 구현 세부 변경이 아니라 여러 영역에 영향을 주는 선택만 기록한다.
+새 결정은 날짜, 배경, 결정, 결과를 기록합니다. 과거 모델을 현재 구조처럼 서술하지 않습니다.
 
-## ADR-001: Cloudflare D1을 Single Source of Truth로 사용
-
-- 상태: 채택
-- 배경: kiosk 주문이 판매장·작업장에 일관되게 보여야 한다.
-- 결정: mock/local-only/Supabase가 아니라 Sites의 D1 `DB`를 운영 원본으로 사용한다.
-- 결과: 모든 운영 API가 same-origin Worker에서 D1을 읽고 쓴다.
-
-## ADR-002: 실시간성은 polling + refetch fallback
+## ADR-001: Cloudflare D1을 운영 원본으로 사용
 
 - 상태: 채택
-- 결정: Sales와 Workshop이 2.5초 polling, focus, online refetch를 사용한다.
-- 이유: 현재 Sites/D1 구조에서 단순하고 장애복구가 명확하다.
-- 결과: 약 3초 반영을 목표로 하며 background timer throttling을 허용한다.
+- 배경: 키오스크, 판매장, 작업장이 같은 주문·작업 데이터를 처리해야 합니다.
+- 결정: Cloudflare D1 `DB`를 운영 데이터의 단일 원본으로 사용합니다.
+- 결과: API route가 D1 prepared statement와 `batch()`로 데이터를 읽고 씁니다.
 
-## ADR-003: fulfillment를 주문 일정의 기준으로 사용
-
-- 상태: 채택
-- 결정: pickup은 `pickup_at`, shipping은 `ship_date`로 날짜를 조회한다.
-- 결과: 주문접수일과 실제 작업일을 혼동하지 않는다. legacy 주문은 일정 미지정으로 유지한다.
-
-## ADR-004: idempotency + D1 batch
+## ADR-002: `work_items`를 운영 중심 테이블로 사용
 
 - 상태: 채택
-- 결정: 고객 주문, 결제, Skin Pack에 idempotency key를 적용하고 다중 변경을 D1 batch로 실행한다.
-- 결과: 빠른 이중클릭, retry, 중간 실패로 인한 중복·부분저장을 방지한다.
+- 날짜: 2026-09-02
+- 배경: 주문 단위만으로 상품별 수령·배송·작업 상태를 관리하기 어려웠습니다.
+- 결정: 고객·상품·수령일시·수령방법·수령자 조합을 `work_items`의 작업 단위로 관리합니다.
+- 결과: 판매장과 작업장은 작업 행을 조회·편집하고, `orders`는 결제와 주문 합계를 관리합니다.
 
-## ADR-005: 감사이력 보존과 soft cancellation
-
-- 상태: 채택
-- 결정: 주문을 hard delete하지 않고 cancelled와 event를 남긴다.
-- 결과: 결제·reservation·작업 이력을 추적할 수 있다.
-
-## ADR-006: 공용 운영 암호 세션
+## ADR-003: 작업 이력은 주문 기준으로 보존
 
 - 상태: 채택
-- 결정: 운영 page와 운영 API는 공용 운영 암호에서 유도한 HttpOnly 세션을 검사한다.
-- 결과: public kiosk를 유지하면서 운영 기능을 제한한다.
+- 날짜: 2026-09-02
+- 결정: `work_item_events.order_id`를 필수로 유지하고 `work_item_id`는 삭제 시 `NULL`이 되는 선택 참조로 둡니다.
+- 결과: 작업 행 삭제 뒤에도 주문 기준 감사 이력을 조회할 수 있습니다.
 
-## ADR-007: 설정 기반 상시 운영 문구
+## ADR-004: 공용 passcode 기반 운영 세션
 
 - 상태: 채택
-- 결정: kiosk headline을 `configuration_events` 기반 설정으로 관리하고 시즌 문구를 코드에 고정하지 않는다.
-- 결과: 배포 없이 안내문구를 변경할 수 있다.
+- 결정: `OPERATOR_PASSCODE`를 PBKDF2-HMAC-SHA-256으로 검증하고 HttpOnly 운영 쿠키를 발급합니다.
+- 결과: 공개 키오스크와 운영 기능의 접근 경계를 분리합니다.
+- 제외: 사용자 ID·이메일 allowlist, ChatGPT 로그인, Supabase Auth
 
-## ADR-008: BOM·Skin Pack·Package 모델
+## ADR-005: 결제는 수동 주문 단위 관리
 
-- 상태: 로컬 통합 완료, Production 미적용
-- 결정: 상품 BOM으로 날짜별 부위 수요를 계산하고, 개별 중량 Skin Pack을 package slot에 all-or-nothing으로 배정한다.
-- 결과: 이력번호, FIFO 재고, package QR, label version, reassignment를 추적한다.
-- 선행조건: Production migration 0005.
+- 상태: 채택
+- 결정: `orders.payment_status`와 `orders.paid_amount`를 운영자가 직접 수정합니다.
+- 결과: PG 연동이나 고객 장부 전용 테이블 없이 미수 현황을 주문 합계와 입금액에서 계산합니다.
 
-## ADR-009: 주문 비배분 고객 결제·미수 장부
+## ADR-006: 상시 운영과 고정 달력 범위
 
-- 상태: 로컬 구현 완료, Production 미적용
-- 날짜: 2026-08-31
-- 배경: 동일 고객이 여러 날 여러 주문을 하고, 실제 입금액이 상품·주문 금액과 일치하지 않을 수 있다.
-- 결정: 정규화한 고객명·전화번호를 기본 고객 식별자로 사용하고 입금을 주문에 자동 배분하지 않는다. 취소되지 않은 고객 주문 총액과 append-only 순입금의 차이로 미수·선수금을 계산한다.
-- 결과: 부분결제·외상·선수금을 고객별로 한눈에 보고, 정정은 reversal로 원본을 보존한다. 예외 분리는 상담 메모 후 명시적으로 적용한다.
-- 보안: 고객 장부도 같은 운영 세션을 사용하며 감사 주체는 `operator`로 기록한다.
-- 선행조건: Production migration 0006과 `OPERATOR_PASSCODE` 설정.
+- 상태: 채택
+- 결정: 판매기간 설정을 제거하고 키오스크의 달력 표시만 오늘부터 365일로 제한합니다.
+- 결과: `sales_seasons`와 판매기간 설정 UI를 사용하지 않습니다.
+
+## ADR-007: 생산·패키지 기능은 작업장 부가 영역
+
+- 상태: 채택
+- 결정: production batch, Skin Pack, package, 추적성 기능을 작업장 부가 모델로 둡니다.
+- 결과: core 주문·작업 모델은 네 테이블로 유지됩니다. 작업 삭제 handler는 package 외래 키 정리를 위해 부가 테이블을 함께 처리합니다.
+
+## ADR-008: `0007`은 재구축 migration
+
+- 상태: 채택
+- 날짜: 2026-09-02
+- 결정: `0007_work-items-core.sql`로 이전 모델을 제거하고 새 core를 생성합니다.
+- 결과: 과거 데이터 이관 SQL이 없으므로 기존 운영 D1에 대한 적용에는 별도 재구축 계획과 승인 절차가 필요합니다.
 
 ## 새 ADR 템플릿
 
@@ -73,6 +66,5 @@
 - 배경:
 - 결정:
 - 결과:
-- 검토한 대안:
 - 관련 task/commit:
 ```

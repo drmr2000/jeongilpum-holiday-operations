@@ -1,6 +1,6 @@
 # Task: 고객 결제 장부 Production 배포
 
-- Status: Active
+- Status: Completed (historical claim)
 - Owner: Codex
 - Branch: `codex/customer-payment-ledger`
 - Base commit: `2ec72bb9ab3db87995779d64f9352d1704a07343`
@@ -48,3 +48,7 @@
 - Production URL:
 - Completed at:
 - Remaining TODO:
+
+## Archive note
+
+2026-09-02에 `0007_work-items-core.sql`이 고객 장부 테이블과 route를 제거한 현재 구조로 재구축되었습니다. 이 기록은 현재 작업 claim이 아니므로 완료 이력으로 이동했습니다.

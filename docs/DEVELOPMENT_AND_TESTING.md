@@ -4,121 +4,85 @@
 
 - Node.js 22.13 이상
 - npm
-- Vinext/Vite/Cloudflare local runtime
-- project-local `.wrangler` state
+- Vinext/Vite와 Cloudflare local runtime
+- 저장소 루트의 `.wrangler/state`
+- 운영 화면을 확인할 때는 gitignored `.dev.vars`의 `OPERATOR_PASSCODE`
 
-주요 command:
+## 기본 명령
 
 ```bash
 npm install
+npm run db:local
 npm run dev
+```
+
+개발 서버 주소는 `http://localhost:3001`입니다.
+
+```bash
 npm run lint
 npm run typecheck
 npm test
 npm run build
+```
+
+schema 변경에만 아래 명령을 추가합니다.
+
+```bash
 npm run db:generate
-npm run db:local
 ```
 
 ## 디렉터리 역할
 
 | 경로 | 역할 |
 |---|---|
-| `app/**/page.tsx` | route, server auth boundary |
-| `app/components/` | client UI와 state |
-| `app/api/` | HTTP/API, validation, transaction |
-| `app/lib/` | domain, query, shared client/type |
-| `db/` | D1/Drizzle schema |
+| `app/**/page.tsx` | route와 page 단위 접근 제어 |
+| `app/components/` | client UI와 화면 상태 |
+| `app/api/` | HTTP, 검증, 인증, D1 변경 |
+| `app/lib/` | 도메인 함수와 공통 client |
+| `db/` | D1 연결과 Drizzle schema |
 | `drizzle/` | migration과 snapshot |
-| `tests/` | unit, migration, integration-style regression |
-| `public/` | logo와 정적 이미지 |
-| `.openai/` | Sites project binding |
-| `scripts/` | local Wrangler D1 configuration and migration runner |
+| `tests/` | 현재 동작을 고정하는 자동 검사 |
+| `scripts/` | 로컬 D1 초기화와 Wrangler 설정 |
 | `docs/` | as-built 문서와 작업 claim |
 
-## 구현 규칙
+## 테스트 정책
 
-- UI에 business rule을 중복 구현하더라도 서버 validation을 생략하지 않는다.
-- route handler는 input validation, auth, transaction을 담당한다.
-- 계산 가능한 domain rule은 `app/lib`의 순수함수로 분리하고 Node test를 작성한다.
-- 기존 compact code를 무관하게 전면 포맷하지 않는다.
-- shared type 변경은 API response와 모든 consumer를 함께 검사한다.
-- snapshot 필드를 live product join으로 대체하지 않는다.
-- cache가 운영 누락을 만들지 않게 no-store 계약을 유지한다.
-
-## 테스트 파일
-
-| 파일 | 범위 |
-|---|---|
-| `tests/v2-spec.test.mjs` | kiosk, auth, navigation, settings, 전체 구조 회귀 |
-| `tests/legacy-fulfillment.test.mjs` | 일정 미지정 legacy 주문 |
-| `tests/commerce.test.mjs` | 0004, 한정수량, 결제, 외상, 맞춤주문 |
-| `tests/sales-operations.test.mjs` | 판매장 날짜·검색·고객도착·상태 |
-| `tests/workshop-operations.test.mjs` | 작업우선순위, 상태전환, 생산량, 조기도착 |
-| `tests/package-traceability.test.mjs` | 0005/0007, BOM, Batch, 12자리 HID, 100장 일괄, 50×50 PDF, QR/PII, CSV, 패키지 |
-| `tests/rendered-html.test.mjs` | 렌더 결과 보조 검사; 기본 `npm test`에는 현재 미포함 |
+- `tests/` 아래의 모든 테스트 파일은 검사 대상입니다.
+- 키오스크 고정성 검사는 기계적 검사이므로 생략하거나 선택 실행으로 제외하지 않습니다.
+- 개별 파일 목록은 문서에 고정하지 않습니다. 테스트 재작성 또는 파일 이동 시에도 전체 검사 대상 원칙을 유지합니다.
+- 사용자 흐름, D1 제약, idempotency, version 충돌, 작업 삭제 뒤 이력 보존을 함께 검사합니다.
+- UI·API·schema 변경은 관련 자동 검사와 전체 검사를 함께 실행합니다.
+- 실행하지 못한 검사는 통과로 기록하지 않고 사유를 보고합니다.
 
 ## 변경 유형별 검사
 
-### 문서만 변경
+### 문서 변경
 
-- relative link 존재 확인
+- 문서 내부 상대 링크 확인
 - `git diff --check`
 
-### UI 변경
+### UI 또는 API 변경
 
-- lint
-- typecheck
-- 관련 v2/workshop/sales test
-- desktop와 narrow layout 수동 확인이 필요하면 명시
-
-### API 또는 domain 변경
-
-- lint
-- typecheck
+- `npm run lint`
+- `npm run typecheck`
 - 관련 test
 - `npm test`
-- error와 auth path 검토
 
 ### schema 변경
 
-- 새 migration 생성
-- generated SQL 수동검토
-- 0000→latest 빈 DB 적용
-- production-like legacy DB 적용과 row 보존
-- provider-safe semicolon execution test
-- full test와 build
-
-### 배포 후보
-
+- `npm run db:generate`
+- 새 D1 상태에서 migration journal 전체 적용
 - `npm run lint`
 - `npm run typecheck`
 - `npm test`
 - `npm run build`
-- schema가 변했다면 `npm run db:generate`
-- clean working tree와 정확한 HEAD
 
-### Local D1 migration
+`0007_work-items-core.sql`은 과거 테이블을 제거하므로 기존 운영 데이터를 사용하는 migration 검증에는 backup과 데이터 보존 계획이 별도로 필요합니다.
 
-- `npm run db:local`은 `drizzle/meta/_journal.json`의 entries 순서대로 local D1에 migration을 적용한다.
-- 실행 중 하나라도 실패하면 이후 migration을 적용하지 않고 non-zero exit로 종료한다.
-- local D1을 초기화하거나 migration 적용 이력을 기록하는 동작은 제공하지 않는다.
+## 로컬 D1 주의사항
 
-## 테스트 작성 원칙
+```bash
+npx wrangler d1 execute DB --local -c scripts/wrangler.jsonc --persist-to .wrangler/state --command "SELECT COUNT(*) AS product_count FROM products"
+```
 
-- user-visible behavior와 DB invariant를 함께 검증한다.
-- 단순 source regex만으로 transaction 성공을 증명하지 않는다.
-- idempotency, concurrency, rollback, row preservation을 포함한다.
-- timezone과 pickup/shipping date 분기를 각각 테스트한다.
-- cancelled와 legacy behavior를 회귀 항목으로 유지한다.
-- Production browser 확인을 자동테스트 통과로 대체하지 않는다.
-- 자동화할 수 없는 항목은 `사용자 수동 확인 필요`로 보고한다.
-- 실기기 라벨은 Galaxy Tab A9+ Chrome 공유, OpenLabel 수신, BY-482BT 용지 보정·실측, Bluetooth 재연결, 100장 및 용지 부족 후 잔여 출력까지 별도 확인한다.
-
-## 완료 기준
-
-- 요구사항이 route/render tree에서 실제 사용된다.
-- DB와 API 계약이 문서와 일치한다.
-- 관련 tests가 통과한다.
-- 실패·미실행 검사를 숨기지 않는다.
-- 관련 docs와 작업 task 파일이 갱신된다.
+`--persist-to .wrangler/state`를 생략하면 Wrangler가 config 파일 기준 경로를 사용하여 빈 데이터베이스를 조회할 수 있습니다.

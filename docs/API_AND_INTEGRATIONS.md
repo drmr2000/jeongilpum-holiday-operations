@@ -2,118 +2,87 @@
 
 ## API 원칙
 
-- route handler가 HTTP, 인증, validation, transaction 경계다.
-- 운영 GET/쓰기 API는 공용 운영 암호 세션을 확인한다.
-- 공개 주문 POST는 운영자 인증을 요구하지 않지만 서버 validation과 idempotency를 적용한다.
-- 모든 SQL parameter는 prepared statement `.bind()`를 사용한다.
-- 운영 조회 response는 cache를 비활성화한다.
-- error response에 내부 SQL, token, PII를 노출하지 않는다.
+- 공개 고객 주문은 `POST /api/orders` 하나입니다.
+- 운영 조회와 운영 데이터 변경은 `jip_operator` 세션 쿠키를 확인합니다.
+- version을 받는 변경 API는 충돌 시 `409`과 최신 version 정보를 반환할 수 있습니다.
+- 운영 변경은 `work_item_events`에 감사 이벤트를 기록합니다.
+- 고객 장부 전용 API와 `fulfillments` API는 현재 존재하지 않습니다.
 
-## API 목록
+## 세션과 상품
 
-| Method | Route | 책임 | 접근 |
-|---|---|---|---|
-| GET | `/api/products` | 활성 상품, 시즌, headline | 공개 |
-| POST | `/api/orders` | main kiosk 주문 원자적 생성 | 공개 |
-| GET | `/api/orders` | 날짜별 주문·검색·상세 데이터 | 운영자 |
-| PATCH | `/api/orders/status` | 주문 상태 변경·사유가 있는 취소·reservation 해제 | 운영자 |
-| PATCH | `/api/orders/arrival` | 고객도착 등록 | 운영자 |
-| POST | `/api/orders/fulfillment` | legacy 주문 일정 지정 | 운영자 |
-| POST/DELETE | `/api/operator-session` | 운영 세션 생성·삭제 | 공개 |
-| GET | `/api/customer-ledger` | 고객 장부 목록·상세·미수·선수금 조회 | 운영자 |
-| POST | `/api/customer-ledger/transactions` | 고객 결제와 원본 보존 정정 | 운영자 |
-| POST | `/api/customer-ledger/consultations` | 상담 메모 및 상담 후 장부 분리 적용 | 운영자 |
-| GET/PATCH | `/api/settings` | 상품·시즌·headline 조회/수정 | 운영자 |
-| GET | `/api/workshop/orders` | 작업장 날짜별 데이터 | 운영자 |
-| POST | `/api/workshop/actions` | 수락·시작·준비완료 | 운영자 |
-| GET/POST | `/api/workshop/production` | 생산 overview와 Batch/Skin Pack action | 운영자 |
-| POST | `/api/workshop/packages/assemble` | Skin Pack package 조립 | 운영자 |
-| POST | `/api/workshop/packages/reassign` | 1:1 package 재배정 | 운영자 |
-| GET/PATCH | `/api/workshop/packages/:code` | package 상세·label action | 운영자 |
-| GET | `/api/workshop/packages/:code/csv` | package long CSV | 운영자 |
-| GET | `/api/workshop/production/batches/:id/csv` | batch long CSV | 운영자 |
+| Method | Route | 접근 | 입력 | 결과 |
+|---|---|---|---|---|
+| POST | `/api/operator-session` | 공개 | `{ passcode }` | 암호 검증 후 운영 쿠키 발급 |
+| DELETE | `/api/operator-session` | 공개 | 없음 | 운영 쿠키 만료 |
+| GET | `/api/products?date=` | 공개 | 선택 `date` | 활성 상품, 날짜별 작업수량, `dailyLimit`, 잔여수량, 키오스크 달력 범위 |
+| GET | `/api/settings` | 운영 세션 | 없음 | 상품 revision과 비활성 상품 목록 |
+| PATCH | `/api/settings` | 운영 세션 | `type: "product"`, `id`, `expectedVersion`, 상품 필드 | 기존 상품과 `daily_limit` 수정 |
 
-## 주문 API 계약의 핵심
+`GET /api/products`의 `activeSeason`은 호환 응답 필드입니다. 판매기간 테이블이나 설정 값을 조회하지 않으며 오늘부터 365일 뒤까지의 달력 범위를 반환합니다.
 
-- client가 보낸 가격을 받지 않는다.
-- 상품 ID와 수량으로 D1 상품을 조회해 총액을 계산한다.
-- 방문수령은 pickup date/time, 택배는 ship date와 주소를 검증한다.
-- custom item은 허용 category, 예산 최소 200,000원을 검증한다.
-- 한정수량은 DB 조건부 reservation으로 동시 주문을 방어한다.
-- commit 후 생성 주문을 응답한다.
-- 고객 이름·전화번호 정규화 계정을 만들거나 재사용하고 주문을 고객 장부에 연결한다.
+## 주문과 작업
 
-## 고객 장부 API 계약
+| Method | Route | 접근 | 입력 | 결과 |
+|---|---|---|---|---|
+| GET | `/api/orders?date=&q=` | 운영 세션 | 선택 `date`, `q` | 주문별 작업 항목과 이벤트 조회 |
+| POST | `/api/orders` | 공개 | `idempotencyKey`, 주문자, 수령방법, 상품 배열, 예약·배송 정보, 맞춤주문 정보 | `orders`, `work_items`, `work_item_events` 생성 |
+| PATCH | `/api/orders/arrival` | 운영 세션 | `{ workItemId }` 또는 `{ orderId }` | 현장예약 주문의 최초 도착시각 기록 |
+| PATCH | `/api/orders/payment` | 운영 세션 | `{ orderId, paymentStatus, paidAmount, expectedVersion }` | 주문 결제 상태·금액과 관련 이벤트 수정 |
+| PATCH | `/api/orders/status` | 운영 세션 | `{ workItemId, status, expectedVersion, cancelReasonType?, cancelReason? }` | 작업 상태 변경, 취소 사유 검증과 이벤트 기록 |
+| GET | `/api/work-items` | 운영 세션 | `view`, 상태·수령방법·기간·검색·정렬 filter | 작업 목록과 상태·수령방법별 현황, 또는 고객별 주문·잔액 |
+| PATCH | `/api/work-items` | 운영 세션 | `{ id, expectedVersion, changes }` | 작업 행, 주문 합계·도착 상태, 감사 이벤트 수정 |
+| POST | `/api/work-items` | 운영 세션 | 생성용 `action: "create"` 또는 복제용 `sourceId`, `expectedVersion` | 새 작업 생성 또는 작업 복제 |
+| DELETE | `/api/work-items` | 운영 세션 | `{ id, expectedVersion }` | package 연결 정리 후 작업 행 삭제 |
+| PATCH | `/api/work-items/bulk` | 운영 세션 | 최대 100개 `items`와 action별 값 | 상태·수령일시·결제 일괄 변경, 복제, 삭제 |
 
-- 고객 잔액은 취소되지 않은 주문 총액에서 고객 장부 순입금을 뺀 값이다.
-- 취소 시 `cancelReasonType`은 `test`, `customer_cancelled`, `custom` 중 하나이며 직접입력은 200자 이하 `cancelReason`을 요구한다. 사유는 `order_events.reason`에 보존한다.
-- 활성 주문·결제거래·상담이 모두 없는 취소 전용 고객은 장부 기본 목록에서 제외하지만 주문 검색과 감사이력은 유지한다.
-- 양수는 미수금, 0은 결제완료, 음수는 선수금이다.
-- 입금은 현금·카드·계좌이체이며 잔액보다 큰 금액도 선수금으로 기록할 수 있다.
-- 실제 결제자 이름·전화번호·관계·메모는 선택값이다.
-- 모든 금액 변경은 idempotency key와 D1 batch를 사용하며 기존 거래를 UPDATE/DELETE하지 않는다.
+`/api/work-items/bulk`의 action은 `status`, `due_at`, `payment`, `duplicate`, `delete`입니다.
 
-## polling 계약
+## 작업장
 
-- Sales와 Workshop은 2.5초 interval을 유지한다.
-- focus/online에서 즉시 refetch한다.
-- active tab이 아니면 브라우저 timer throttling이 발생할 수 있다.
-- API는 `Cache-Control: no-store, no-cache, must-revalidate`를 사용한다.
-- Realtime event 기반 구조로 바꿀 경우 polling fallback을 제거하지 말고 별도 설계결정을 기록한다.
+| Method | Route | 접근 | 입력 | 결과 |
+|---|---|---|---|---|
+| GET | `/api/workshop/orders?date=` | 운영 세션 | 필수 `date` | 당일 현장예약·택배 작업, 상품별 수량, 이벤트 |
+| POST | `/api/workshop/actions` | 운영 세션 | `{ workItemId, status, expectedVersion, idempotencyKey }` | idempotent 작업 상태 변경 |
+| GET | `/api/workshop/production?date=` | 운영 세션 | 필수 `date` | 수요, 가용 Skin Pack, batch, 최근 이력번호 |
+| POST | `/api/workshop/production` | 운영 세션 | action별 payload | batch·목표·추적성 구간·Skin Pack·완료 처리 |
+| GET | `/api/workshop/production/batches/[batchId]/csv` | 운영 세션 | 경로 `batchId` | batch의 Skin Pack 라벨 CSV |
+| GET | `/api/workshop/packages` | 운영 세션 | 없음 | 최근 package 목록 |
+| GET | `/api/workshop/packages/[packageCode]` | 운영 세션 | 경로 `packageCode` | package, 연결 작업, Skin Pack, 최신 라벨 |
+| PATCH | `/api/workshop/packages/[packageCode]` | 운영 세션 | `{ action: "preview_label" }` | 라벨 미리보기 |
+| POST | `/api/workshop/packages/assemble` | 운영 세션 | `{ workItemId, assemblyKey }` | idempotent package 생성 |
+| POST | `/api/workshop/packages/reassign` | 운영 세션 | `{ packageId, targetWorkItemId, idempotencyKey }` | package 작업 항목 재배정 |
+| GET | `/api/workshop/packages/[packageCode]/csv` | 운영 세션 | 경로 `packageCode` | package의 Skin Pack 라벨 CSV |
+
+`POST /api/workshop/production`의 action은 `create_batch`, `adjust_target`, `change_traceability`, `create_skin_pack`, `complete_batch`입니다.
 
 ## 외부 연동
 
+### Cloudflare D1
+
+- Worker runtime은 `cloudflare:workers`의 `env.DB`를 사용합니다.
+- D1은 SQLite 기반 운영 데이터베이스입니다.
+- SQL은 prepared statement와 `.bind()`를 사용합니다.
+
 ### OpenAI Sites
 
-- source version 저장, Production 배포, 접근정책을 담당한다.
-- `.openai/hosting.json`의 project와 D1 논리 binding을 재사용한다.
-- Production deploy는 saved version 단위다.
-
-### Cloudflare Worker와 D1
-
-- Vinext 앱과 API 실행 runtime이다.
-- `cloudflare:workers`에서 `env.DB`를 주입받는다.
-- D1은 SQLite 기반 운영 DB다.
-- R2 binding은 현재 `null`이다.
-
-### 운영 암호 세션
-
-- Worker 환경값 `OPERATOR_PASSCODE`로 PBKDF2-HMAC-SHA256 토큰을 계산한다.
-- `jip_operator` HttpOnly 쿠키는 30일 동안 유효하며 HTTPS 요청에서만 `Secure` 속성을 사용한다.
-- 운영 route handler는 공용 세션 검사 실패 시 401을 응답한다.
+Sites project 연결 정보는 `.openai/hosting.json`에 보관합니다. 이 문서 작성 범위에서는 실제 Production version과 배포 상태를 조회하지 않았습니다.
 
 ### Kakao 우편번호
 
-- 고객 배송주소 검색 시 `https://t1.kakaocdn.net/.../postcode.v2.js`를 동적으로 로드한다.
-- road address, jibun, zonecode, reference를 분리한다.
-- 로드 실패 시 직접입력으로 진행한다.
+배송 주소 입력에서 Kakao 우편번호 스크립트를 동적으로 불러올 수 있습니다. 로드에 실패하면 주소를 직접 입력할 수 있습니다.
 
-### QR
+### QR와 CSV
 
-- npm `qrcode` 라이브러리로 data URL을 생성한다.
-- 외부 QR API 호출은 없다.
-- payload에는 package 식별정보만 넣고 PII를 금지한다.
+- QR은 npm `qrcode` 라이브러리로 생성합니다.
+- package QR에는 고객 개인정보를 포함하지 않습니다.
+- 라벨 CSV는 외부 API 호출이 아닌 다운로드 응답입니다.
 
-### Open Label CSV
+## 사용하지 않는 연동
 
-- 외부 API 연동이 아니라 호환 long CSV 다운로드다.
-- UTF-8 BOM, CSV escaping, one row per Skin Pack을 유지한다.
-
-### 제품 이미지
-
-- 설정에는 URL 문자열만 저장한다.
-- 자체 upload와 R2 저장은 없다.
-- 외부 URL의 가용성·권한·CORS는 해당 host에 의존한다.
-
-## 연동되지 않은 시스템
-
-- GPT/OpenAI model inference API
-- Supabase DB/Auth/Realtime
+- Supabase DB, Auth, Realtime
+- Postgres
 - Vercel
-- GitHub 배포 remote
 - PG·카드사 승인 API
-- SMS·Kakao 알림 발송
-- WebSocket/SSE
+- SMS·카카오 알림 API
+- WebSocket, SSE
 - Open Label API 또는 프린터 직접 제어
-
-`.env.example`의 Supabase key 이름은 과거 흔적이며 현재 runtime에서 사용하지 않는다. 새 코드가 이를 다시 사용하지 않도록 한다.

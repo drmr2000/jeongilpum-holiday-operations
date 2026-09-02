@@ -1,131 +1,66 @@
 # Production 배포 runbook
 
-## 현재 배포 모델
+## 배포 경계
 
-- OpenAI Sites가 version과 Production URL을 관리한다.
-- 앱 runtime은 Cloudflare Worker다.
-- 운영 DB는 Sites가 연결한 Cloudflare D1 `DB`다.
-- source remote는 Sites 내부 Git이다.
-- Supabase, Vercel, GitHub 배포는 사용하지 않는다.
-
-## 배포 원칙
-
-- Production deploy나 migration은 명시적 사용자 요청 없이 실행하지 않는다.
-- DB migration 성공 전에 schema 의존 앱을 배포하지 않는다.
-- 앱 배포만으로 DB row count가 변하면 안 된다.
-- saved version의 commit SHA와 실제 배포 대상 SHA가 같아야 한다.
-- 기존 backup을 덮어쓰지 않는다.
+- Production deploy와 D1 migration은 시스템 소유자의 명시적 요청이 있을 때만 수행합니다.
+- 이 문서는 현재 작업 트리의 코드와 migration을 기준으로 작성했습니다.
+- 실제 Production version, commit, D1 migration 상태는 배포 전에 외부 시스템에서 다시 확인합니다.
 
 ## 앱 변경만 있는 경우
 
-1. 실제 Production version/commit/access 확인
-2. branch, HEAD, clean working tree 확인
-3. migration/schema 변경 없음 확인
-4. lint, typecheck, test, build
-5. 정확한 commit을 Sites source에 push
-6. 해당 commit으로 saved version 생성
-7. version을 Production에 deploy
-8. `/kiosk`, `/sales`, 관련 route smoke test
-9. Production commit과 Sites version 재확인
-10. D1 핵심 row count가 배포 전과 같은지 확인
+1. 배포 대상 branch와 commit을 확인합니다.
+2. schema와 `drizzle/` 변경이 없음을 확인합니다.
+3. `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`를 실행합니다.
+4. 배포 시스템에서 해당 commit의 saved version을 생성합니다.
+5. 승인된 version을 Production에 배포합니다.
+6. 공개 키오스크와 운영 세션, 판매장, 작업장, 설정 화면을 점검합니다.
+7. 실제 Production version과 commit을 기록합니다.
 
-## migration이 있는 경우
+## schema 변경이 있는 경우
 
-1. Production table과 migration history read-only 확인
-2. 번호 충돌과 이미 적용된 migration 여부 확인
-3. timestamp 전체 backup 생성
-4. 핵심 row count 기록
-5. migration SQL과 provider-safe test 재확인
-6. migration을 정확히 한 번 적용
-7. 신규 table/index 생성 확인
-8. 기존 row count와 FK 데이터 보존 확인
-9. 실패 시 앱 deploy 중단
-10. 성공 시에만 schema 의존 앱 배포
+1. Production D1의 migration 이력과 핵심 table 존재 여부를 읽기 전용으로 확인합니다.
+2. 새 migration 번호와 이미 적용된 migration을 확인합니다.
+3. timestamp가 포함된 backup을 생성하고 row count를 기록합니다.
+4. 새 migration SQL과 로컬 전체 migration 검사를 재확인합니다.
+5. migration을 한 번만 적용합니다.
+6. 새 table, index, row count, 외래 키 보존을 확인합니다.
+7. 성공한 경우에만 schema 의존 앱 version을 배포합니다.
 
-## 핵심 row count
+## `0007_work-items-core.sql` 특별 규칙
 
-- products
-- orders
-- order_items
-- order_events
-- fulfillments
-- fulfillment_items
-- packages
-- payments
-- production 적용 후: production_batches, skin_packs, package_skin_packs
+`0007_work-items-core.sql`은 이전 주문·수령·결제·고객 장부·판매기간·생산 테이블을 삭제한 뒤 현재 `work_items` 모델을 생성합니다. 과거 행을 이관하는 SQL이 없습니다.
 
-## smoke test
+따라서 기존 운영 데이터를 가진 D1에 `0007`을 적용하는 작업은 일반 migration으로 취급하지 않습니다. 전체 backup 복원 절차, 데이터 손실 승인, 재구축 계획이 없는 상태에서는 배포하지 않습니다.
+
+## 배포 후 점검
 
 ### Kiosk
 
-- 상품과 settings headline
-- 방문수령 날짜·시간
-- 택배 주소·발송일
-- 맞춤주문과 draft 복원
-- idempotent submit
+- 활성 상품과 일일 한정수량 표시
+- 방문예약, 택배예약, 현장판매 주문 접수
+- 주문 성공 후 작업 항목 생성
 
 ### Sales
 
-- 선택 날짜 주문표
-- 주문 검색과 legacy
-- 고객도착
-- 결제·외상
-- 약 3초 polling 반영
+- 상태별 현황과 수령방법별 소계
+- 작업 행 수정, 도착·주문 확인 전환
+- 고객별 잔액과 주문 단위 결제 수정
+- 다중 선택 상태·수령일시·결제·복제·삭제
 
 ### Workshop
 
-- 작업수락→시작→준비완료
-- 우선순위와 next_due_at
-- 판매장 고객도착 반영
-
-### Production 0005 배포 후
-
-- BOM requirement
-- Batch 생성
-- 테스트 Skin Pack 1개
-- CSV와 PII-free QR
-- package assembly는 명확한 테스트 데이터에서만 수행
-
-### Production 0007 배포 후
-
-- Production이 현재 0004라면 timestamp backup과 row count 후 0005 → 0006 → 0007 순서로 적용
-- `supplier_presets`, `component_label_settings`, `label_print_jobs`, `label_print_events` 및 신규 index 확인
-- 기존 `production_batches`, `skin_packs`, label row count와 `PRAGMA foreign_key_check` 확인
-- 중앙 12자리 이력번호 TEST PDF 1장(재고 증가 없음)
-- TEST 승인 후 소량 본 작업의 재고·draft label·생산수량 동시 증가 확인
-- OpenLabel 공유 또는 다운로드 대체 후 수동 완료 전에는 label이 draft인지 확인
-- 실기기 50×50mm 출력 검증 전 운영 대량 인쇄 금지
-
-## 테스트 데이터
-
-- 실제 운영 주문과 구분 가능한 고객명·메모를 사용한다.
-- 운영 주문을 임의 수정하지 않는다.
-- 테스트 주문은 DELETE하지 않는다.
-- 완료 후 Status API로 cancelled 처리하고 audit event를 보존한다.
-- 결제기록은 삭제하지 않는다.
-
-## rollback 판단
-
-rollback 또는 배포 중단 조건:
-
-- migration 일부 실패
-- 기존 row 감소 또는 FK 손실
-- kiosk 주문 생성 실패
-- 운영 API 401/403 설정 불일치
-- `/sales`에서 DB 주문이 조회되지 않음
-- build commit과 배포 commit 불일치
-
-앱 rollback은 이전 Sites version으로 한다. DB schema rollback은 기존 migration을 수정하거나 destructive SQL을 즉흥 실행하지 말고 별도 복구 migration과 backup을 검토한다.
+- 당일 현장과 택배의 분리 조회
+- 작업 상태 변경
+- 상품별 수량 집계
+- production batch, Skin Pack, package가 배포 범위에 포함된 경우 관련 route와 CSV
 
 ## 배포 보고
 
-- backup 결과
-- migration 전/후 row count
-- migration 성공 여부
-- Sites version과 commit
-- Production URL
-- route smoke 결과
-- kiosk→sales 실제 반영시간
-- 테스트 주문 ID와 취소 이력
-- 기존 데이터 보존
-- 오류와 rollback 필요 여부
+- 배포 대상 commit과 version
+- 실행한 lint, typecheck, test, build 결과
+- migration 여부와 backup 위치
+- migration 전후 row count
+- 공개 주문과 운영 세션 점검 결과
+- 확인하지 못한 항목과 사유
+
+실제 고객정보, 운영 암호, token, API key는 배포 보고에 기록하지 않습니다.

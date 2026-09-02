@@ -4,139 +4,74 @@
 
 ```text
 Browser
-├─ public kiosk client
-└─ passcode-gated operator clients
+├─ public kiosk
+└─ operator pages
         ↓ same-origin HTTP
 Vinext / React routes
         ↓
 Cloudflare Worker route handlers
 ├─ input validation
-├─ operator passcode session validation
-├─ domain calculation
+├─ operator session validation
+├─ version and idempotency checks
 └─ D1 prepared statements / batch
         ↓
 Cloudflare D1 (SQLite)
 ```
 
-## 기술 스택
-
-- React 19, TypeScript
-- Vinext 1.x, Vite 8
-- Cloudflare Vite plugin과 Worker runtime
-- Cloudflare D1
-- Drizzle ORM과 Drizzle Kit
-- Node test runner
-- `qrcode` 라이브러리
-
-빌드·의존성 정의는 `package.json`, Worker/D1 로컬 바인딩은 `vite.config.ts`, Sites 논리 바인딩은 `.openai/hosting.json`을 기준으로 한다.
-
-## 렌더링 경계
-
-- route page는 server component로 접근 제어를 수행한다.
-- Kiosk, Sales, Workshop, Settings 등 실제 상호작용은 client component가 담당한다.
-- 운영 page는 유효한 공용 운영 암호 세션이 있을 때 client app을 렌더링한다.
-- 운영 API는 같은 HttpOnly 세션을 다시 검사한다. page 보호만으로 API 권한을 대신하지 않는다.
-
-## 데이터 접근
-
-- `cloudflare:workers`의 `env.DB`가 D1 binding이다.
-- Drizzle schema는 `db/schema.ts`에 정의한다.
-- 복잡하고 원자성이 중요한 운영 query는 D1 prepared statement와 `batch()`를 직접 사용한다.
-- 여러 테이블을 변경하는 요청은 하나의 batch로 묶는다.
-- 사용자 입력을 SQL 문자열에 직접 이어 붙이지 않고 `.bind()`를 사용한다.
-- 상품 사진은 `products.image_url`의 비어 있지 않은 값을 우선 사용한다. 값이 없으면 `GET /api/products`가 `app/lib/catalog-product-images.ts`의 상품 ID 매핑을 통해 `public/products/`의 카탈로그 v23 사진을 제공한다.
-
-## 고객 주문 흐름
-
-```text
-Kiosk draft(sessionStorage)
-→ POST /api/orders
-→ validation
-→ product/season/limit lookup
-→ server-side total calculation
-→ idempotency check
-→ D1 batch:
-   orders
-   order_items
-   fulfillments
-   fulfillment_items
-   reservations
-   customizations
-   현장판매 customer_ledger_transaction
-   현장판매 customer_ledger_event
-   order_events
-→ committed order response
-→ success screen
-```
-
-sessionStorage는 새로고침·뒤로가기를 위한 제출 전 초안이다. 주문 성공 후 삭제되며 운영 원본이 아니다.
-
-메인 주문 유형은 현장판매, 방문수령, 택배발송이다. 주문은 `fulfilled`, fulfillment는 즉시 인도된 `pickup` row로 저장하되 주문의 `fulfillment_type=onsite`를 판매 유형의 기준으로 사용한다. 결제거래와 감사이력은 주문 생성과 같은 D1 batch에 포함한다.
-
-모든 주문의 마지막 UI 단계는 결제방식 선택이다. 방문수령·택배의 선택은 결제 예정 정보로 주문 이벤트에만 남고 실제 입금으로 확정하지 않는다. 현장판매의 카드·현금·계좌이체 선택은 고객 장부 입금으로 기록한다.
-
-## 운영 화면 동기화
-
-- Sales와 Workshop은 2.5초 polling을 사용한다.
-- focus와 online 이벤트에서 즉시 refetch한다.
-- 날짜 변경과 수동 새로고침도 refetch한다.
-- client fetch와 API response 모두 cache를 비활성화한다.
-- WebSocket, SSE, Supabase Realtime은 사용하지 않는다.
-
-## 고객 결제·미수 장부
-
-```text
-same normalized customer name + phone
-→ customer account
-→ multiple order charges (cancelled 제외)
-   + customer-level append-only transactions
-→ total ordered - net received
-→ receivable / paid / advance
-```
-
-- 주문 생성 batch에서 `customer_accounts`와 `order_customer_accounts`를 함께 연결한다.
-- 입금은 주문이나 상품에 자동 배분하지 않는다.
-- 정정은 원본 수정·삭제 대신 reversal과 선택적 replacement를 추가한다.
-- 드문 고객 분리는 상담 메모와 대상 주문을 먼저 저장한 뒤, 명시적 이관금액과 함께 별도 batch로 적용한다.
-
-## 일정과 timezone
-
-- 방문수령은 `pickup_at`의 Asia/Seoul `+09:00` 의미를 사용한다.
-- 현장판매는 즉시 인도 시각을 `pickup_at`에 Asia/Seoul `+09:00`으로 기록하고 주문 유형은 `onsite`로 구분한다.
-- 택배는 `ship_date`의 `YYYY-MM-DD` 값을 사용한다.
-- 판매장과 작업장 날짜 filter는 이 두 값을 기준으로 한다.
-- `created_at` 또는 주문접수일을 운영 일정 대신 사용하지 않는다.
-
-## 상태와 동시성
-
-- 주문 상태: submitted → confirmed → in_progress → ready → fulfilled, 별도 cancelled
-- 작업수락과 작업시작은 서로 다른 event로 유지한다.
-- version 기반 optimistic concurrency로 오래된 화면의 덮어쓰기를 막는다.
-- 주문·결제·Skin Pack 생성에는 idempotency key를 사용한다.
-- 상태 및 설정 변경은 event table에 before/after를 기록한다.
-
-## 생산·패키지 구조
-
-```text
-scheduled order items
-→ product BOM(product_components)
-→ required component quantities
-→ minus available skin packs
-→ production target
-→ production batch + traceability snapshot
-→ weighted skin packs + labels
-→ all-or-nothing package assembly
-→ package QR / label / assignment history
-```
-
-가용 Skin Pack은 FIFO로 배정한다. 이미 배정된 팩은 재사용할 수 없다. 패키지 QR에는 고객 PII를 포함하지 않는다.
-
 ## 코드 경계
 
-- `app/components/`: client UI와 화면 state
-- `app/api/`: HTTP, 인증, validation, DB transaction 경계
-- `app/lib/`: 순수 domain 계산, query 상수, 공통 client
-- `db/`: Drizzle binding과 schema
-- `drizzle/`: 순차 migration과 snapshot
-- `tests/`: domain, migration, API 구조, 회귀 테스트
-- `.openai/`: Sites project binding
+- `app/components/`: 화면 UI와 클라이언트 상태
+- `app/api/`: HTTP method, 입력 검증, 인증, D1 변경 경계
+- `app/lib/`: 인증, 도메인 계산, 공유 client 함수
+- `db/`: Drizzle schema와 D1 연결
+- `drizzle/`: 순차 SQL migration
+- `tests/`: 현재 동작을 고정하는 검사
+- `scripts/`: 로컬 D1 초기화와 Wrangler 설정
+
+## 주문과 작업
+
+```text
+POST /api/orders
+→ orders
+→ work_items
+→ work_item_events
+```
+
+`orders`는 주문자, 주문 금액, 결제 상태를 보관합니다. `work_items`는 상품별 작업 행이며 수령방법과 `due_at`을 보관합니다. 운영 화면의 조회·편집·상태 변경은 `work_items`를 기준으로 동작합니다.
+
+현장판매는 고객 주문 접수 시 `completed` 작업과 `paid` 주문으로 생성합니다. 현장예약과 택배예약은 `received` 작업으로 생성하고 운영자가 상태와 결제를 수정합니다.
+
+## 감사와 삭제
+
+`work_item_events`는 작업 상태, 결제, 도착, 생성, 복제, 삭제와 같은 운영 변경을 기록합니다. `work_item_id`는 nullable 외래 키이며 삭제 후 `NULL`이 될 수 있습니다. `order_id`는 필수이므로 작업 행이 삭제되어도 주문 기준 이력은 남습니다.
+
+작업 행 삭제 API는 연결 package와 Skin Pack 배정을 먼저 정리한 뒤 작업 행을 삭제합니다. 이 순서는 최종 schema의 외래 키 제약을 충족하기 위한 처리입니다.
+
+## 생산·패키지 부가 기능
+
+```text
+work_items
+→ production demand
+→ production_batches
+→ skin_packs and skin_pack_labels
+→ packages and package_skin_packs
+```
+
+생산·패키지 테이블은 작업 항목을 사용할 수 있으나 주문·작업 핵심 테이블은 이 부가 기능을 참조하지 않습니다. `traceability_records`는 production batch와 Skin Pack의 추적성 정보를 보관합니다.
+
+## 인증 경계
+
+키오스크 주문은 공개입니다. 운영자가 passcode를 `POST /api/operator-session`으로 제출하면 `jip_operator` HttpOnly 쿠키가 설정됩니다. 운영 page와 운영 API는 이 쿠키를 다시 확인합니다.
+
+인증은 `OPERATOR_PASSCODE` 하나를 기반으로 하며 사용자 ID, 이메일 allowlist, Supabase Auth에 의존하지 않습니다.
+
+## 최신성 및 동시 수정
+
+- 운영 API 응답은 `Cache-Control: no-store`를 사용합니다.
+- 작업과 주문 수정은 `expectedVersion`을 확인해 오래된 화면의 덮어쓰기를 막습니다.
+- 주문, 작업 생성, 생산·패키지 처리 중 일부는 idempotency key를 사용합니다.
+- 다중 테이블 변경은 D1 `batch()`로 처리합니다.
+
+## 키오스크 날짜 범위
+
+`GET /api/products`는 서울 기준 오늘부터 365일 뒤까지의 범위를 키오스크에 반환합니다. 응답의 `activeSeason` 이름은 호환 응답 필드일 뿐, `sales_seasons` 테이블이나 판매기간 설정을 의미하지 않습니다.

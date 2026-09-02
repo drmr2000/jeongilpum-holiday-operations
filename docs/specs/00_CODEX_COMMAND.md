@@ -1,4 +1,8 @@
-# Codex 수정 명령 — 메인화면 Step2 / 방문수령 / 택배발송 / 판매장 연동
+# Archived specification
+
+> 이 문서는 과거 요구사항 기록입니다. Supabase, Postgres, `fulfillments`, 판매기간, 과거 인증 요구는 현재 구현을 설명하지 않습니다. 현재 구조는 상위 `docs/`의 as-built 문서와 source code를 기준으로 판단합니다.
+
+# Codex 수정 명령: 메인화면 Step2 / 방문수령 / 택배발송 / 판매장 연동
 
 업로드한 모든 MD 파일을 읽고 기존 MVP에 적용해줘.
 

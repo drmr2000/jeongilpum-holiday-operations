@@ -1,3 +1,7 @@
+# Archived specification
+
+> 이 문서는 과거 요구사항 기록입니다. Supabase, Postgres, `fulfillments`, `sales_seasons`, 이전 고객 장부와 인증 요구는 현재 구현을 설명하지 않습니다. 현재 구조는 상위 `docs/`의 as-built 문서와 source code를 기준으로 판단합니다.
+
 # 정일품 명절 선물세트 예약·운영 시스템
 ## Codex 개발 명세서 v2.1
 

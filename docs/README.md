@@ -1,6 +1,6 @@
 # 정일품 운영 웹앱 문서
 
-이 폴더는 신규 개발자가 제품 맥락, 실제 구현, 데이터 규칙, 배포 상태를 빠르게 파악하기 위한 as-built 문서다.
+이 폴더는 현재 작업 트리의 코드 기준 as-built 문서입니다. 마지막 코드 대조일은 2026-09-02입니다.
 
 ## 문서 읽는 순서
 
@@ -15,34 +15,31 @@
 9. [기술 결정 기록](DECISIONS.md)
 10. [동시작업 관리](WORK_MANAGEMENT.md)
 
-저장소 전체 작업 규칙은 루트의 [AGENTS.md](../AGENTS.md)를 우선 확인한다.
+저장소 전체 작업 규칙은 루트의 [AGENTS.md](../AGENTS.md)를 먼저 확인합니다.
 
-## 현재 상태 snapshot
+## 현재 구현 기준
 
-기준일: 2026-08-30
+- 운영 데이터는 Cloudflare D1 `DB`입니다.
+- 업무의 중심은 `work_items`와 `work_item_events`입니다.
+- 주문은 `orders`, 작업 행은 `work_items`에 보관합니다.
+- 작업장 부가 기능은 `production_batches`, `skin_packs`, `skin_pack_labels`, `packages`, `package_skin_packs`, `traceability_records`를 사용합니다.
+- 판매기간과 고객 장부 전용 테이블은 현재 schema에 없습니다.
+- 운영 인증은 `OPERATOR_PASSCODE`에서 발급한 HttpOnly 세션 쿠키입니다.
 
-- Production URL: `https://jeongilpum-chuseok-mvp.bonbu2012.chatgpt.site`
-- Production: Sites Version 20
-- Production commit: `2d20909c334623ebbb0c0e404469927595111f77`
-- 최신 로컬 통합 branch: `codex/integrate-latest-production-model`
-- 최신 로컬 통합 commit: `0a5cac955b7b4a4ee9785995ddf93ec8b747d80f`
-- Production DB: migration 0004까지, 생산 0005 미적용
-- 로컬 통합본: migration 0005 포함, BOM/Batch/Skin Pack/Package 기능 포함
-
-이 snapshot은 고정된 사실이 아니다. Production 또는 branch 관련 작업에서는 Sites와 Git에서 실제 상태를 다시 확인한다.
+Production version, 배포 commit, Production D1의 적용 migration은 이 문서 대조 범위에서 확인하지 않았습니다. 배포 또는 migration 작업에서는 외부 상태를 별도로 조회해야 합니다.
 
 ## 문서 유형
 
-- 이 폴더 루트의 문서: 현재 코드 기준 as-built 구조와 개발 지침
-- `docs/specs/`: 과거 요구 명세와 구현 배경
-- `docs/work/active/`: 현재 진행 중인 개발자별 작업 claim
-- `docs/work/completed/`: 완료된 작업 기록
+- 이 폴더 루트의 문서: 현재 코드와 운영 규칙
+- `docs/specs/`: 과거 요구사항·구현 배경 기록
+- `docs/work/active/`: 진행 중 작업 claim
+- `docs/work/completed/`: 완료된 작업 이력
 
-`docs/specs/`의 내용이 현재 코드와 다를 수 있다. 새로운 작업에서 명세와 구현이 충돌하면 임의로 한쪽을 선택하지 말고 차이를 보고한다.
+`docs/specs/`와 `docs/work/completed/`의 과거 서술은 현재 기능 설명이 아닙니다. 현재 구조는 이 폴더 루트의 as-built 문서와 소스 코드로 판단합니다.
 
-## 문서 유지 원칙
+## 유지 원칙
 
-- 코드가 바뀌면 관련 as-built 문서도 같은 작업에서 갱신한다.
-- 향후 계획은 현재 기능처럼 쓰지 말고 `계획`, `미구현`, `Production 미적용`을 명시한다.
-- 운영 상태, schema, 인증, 외부연동은 추측하지 않는다.
-- 민감한 ID, token, 실제 고객정보는 문서에 기록하지 않는다.
+- 코드 변경은 관련 as-built 문서를 같은 작업에서 갱신합니다.
+- 외부 Production 상태는 코드만으로 단정하지 않습니다.
+- 계획, 과거 요구사항, 현재 구현을 같은 문장으로 섞지 않습니다.
+- 운영 암호, token, API key, 고객 개인정보를 문서에 기록하지 않습니다.
