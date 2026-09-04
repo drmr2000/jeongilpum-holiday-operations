@@ -17,6 +17,7 @@ export function resolveCatalogProductImageUrl(
   productId: string,
   configuredImageUrl: string | null | undefined,
 ) {
+  if (configuredImageUrl === "") return null;
   const configuredUrl = configuredImageUrl?.trim();
   return configuredUrl || CATALOG_PRODUCT_IMAGE_URLS[productId] || null;
 }

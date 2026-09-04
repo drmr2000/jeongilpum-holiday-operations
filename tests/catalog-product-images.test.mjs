@@ -40,5 +40,6 @@ test("a configured product image overrides the catalog fallback", () => {
     "https://cdn.example.com/palyeong.jpg",
   );
   assert.equal(resolveCatalogProductImageUrl("palyeong", null), "/products/palyeong.webp");
+  assert.equal(resolveCatalogProductImageUrl("palyeong", ""), null);
   assert.equal(resolveCatalogProductImageUrl("unknown", null), null);
 });

@@ -5,7 +5,6 @@ import { requireOperatorApi } from "../../lib/operator-session";
 type ProductRevisionRow = {
   id: string;
   active: number;
-  image_url: string | null;
   sort_order: number;
   updated_at: string;
 };
@@ -42,7 +41,7 @@ type ProductInput = {
   description: string;
   price: number;
   displayWeight: string | null;
-  imageUrl: string | null;
+  imageUrl: string;
   badge: string | null;
   dailyLimit: number | null;
   active: boolean;
@@ -78,6 +77,10 @@ function nullableText(value: unknown) {
   return value.trim() || null;
 }
 
+function imageText(value: unknown) {
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
 function isNonnegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -92,7 +95,7 @@ function productInput(payload: SettingsPayload): ProductInput | null {
   const subtitle = text(payload.subtitle);
   const description = text(payload.description);
   const displayWeight = nullableText(payload.displayWeight);
-  const imageUrl = nullableText(payload.imageUrl);
+  const imageUrl = imageText(payload.imageUrl);
   const badge = nullableText(payload.badge);
   const dailyLimit = payload.dailyLimit;
 
@@ -149,8 +152,7 @@ function inactiveProduct(row: InactiveProductRow) {
     description: row.description,
     price: row.price,
     displayWeight: row.display_weight,
-    imageUrl: row.image_url,
-    previewImageUrl: resolveCatalogProductImageUrl(row.id, row.image_url),
+    imageUrl: resolveCatalogProductImageUrl(row.id, row.image_url),
     badge: row.badge,
     dailyLimit: row.daily_limit,
     sortOrder: row.sort_order,
@@ -460,7 +462,7 @@ export async function GET() {
     const today = todayInSeoul();
     const [revisions, inactiveProducts, categories] = await Promise.all([
       runtimeEnv.DB.prepare(`
-        SELECT id, active, image_url, sort_order, updated_at
+        SELECT id, active, sort_order, updated_at
         FROM products
         WHERE active IN (0, 1)
         ORDER BY sort_order, id
@@ -494,7 +496,6 @@ export async function GET() {
         productRevisions: revisions.results.map((row) => ({
           id: row.id,
           active: Boolean(row.active),
-          imageUrl: row.image_url,
           sortOrder: row.sort_order,
           version: row.updated_at,
         })),

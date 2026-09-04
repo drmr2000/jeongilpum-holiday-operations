@@ -78,6 +78,8 @@
 
 .ui-field {
   display: grid;
+  align-content: start;
+  align-self: start;
   gap: 6px;
   color: var(--ink);
   font-size: var(--text-sm);
@@ -90,7 +92,8 @@
 
 .ui-field__control {
   width: 100%;
-  min-height: 40px;
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
   border: 1px solid #d2c9bd;
   border-radius: var(--radius-md);
   background: #fff;
@@ -112,7 +115,8 @@
 
 .ui-field__native-date {
   width: 100%;
-  min-height: 40px;
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
   padding: 0 40px 0 10px;
   position: relative;
   display: flex;
@@ -176,6 +180,7 @@
 }
 
 .ui-field__control--textarea {
+  height: auto;
   min-height: 96px;
   padding: 10px;
   resize: vertical;
@@ -589,8 +594,7 @@
 }
 
 .ui-toolbar {
-  --ui-toolbar-control-height: 40px;
-  min-height: var(--ui-toolbar-control-height);
+  min-height: var(--ui-control-height);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -599,8 +603,8 @@
 
 .ui-toolbar__search {
   min-width: min(100%, 240px);
-  height: var(--ui-toolbar-control-height);
-  min-height: var(--ui-toolbar-control-height);
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
   padding: 0 10px;
   display: flex;
   align-items: center;
@@ -658,14 +662,14 @@
 .ui-toolbar .ui-field__control:not(.ui-field__control--textarea),
 .ui-toolbar .ui-field__native-date,
 .ui-toolbar__search input {
-  height: var(--ui-toolbar-control-height);
-  min-height: var(--ui-toolbar-control-height);
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
   line-height: var(--leading-tight);
 }
 
 .ui-toolbar .ui-button--icon-only {
-  width: var(--ui-toolbar-control-height);
-  min-width: var(--ui-toolbar-control-height);
+  width: var(--ui-control-height);
+  min-width: var(--ui-control-height);
 }
 
 .ui-toolbar__selection {

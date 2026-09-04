@@ -40,7 +40,6 @@ type CatalogResponse = {
 type ProductRevision = {
   id: string;
   active: boolean;
-  imageUrl: string | null;
   sortOrder: number;
   version: string;
 };
@@ -54,7 +53,6 @@ type ProductRecord = {
   price: number;
   displayWeight: string | null;
   imageUrl: string | null;
-  previewImageUrl: string | null;
   badge: string | null;
   dailyLimit: number | null;
   sortOrder: number;
@@ -218,8 +216,7 @@ function productRows(catalog: CatalogResponse | null, settings: SettingsResponse
       description: product.description,
       price: product.price,
       displayWeight: product.customerDisplayWeight,
-      imageUrl: revision.imageUrl,
-      previewImageUrl: product.imageUrl,
+      imageUrl: product.imageUrl,
       badge: product.badge,
       dailyLimit: product.dailyLimit,
       sortOrder: revision.sortOrder,
@@ -715,10 +712,9 @@ export default function SettingsApp() {
       id: "thumbnail",
       header: "사진",
       cell: (product) => {
-        const thumbnailUrl = product.previewImageUrl ?? product.imageUrl;
         return <span className="settings-product-thumb">
-          {thumbnailUrl
-            ? <img src={thumbnailUrl} alt={`${product.name} 상품 사진`} />
+          {product.imageUrl
+            ? <img src={product.imageUrl} alt={`${product.name} 상품 사진`} />
             : <ImageOff size={16} aria-hidden="true" />}
         </span>;
       },
@@ -983,9 +979,9 @@ export default function SettingsApp() {
           placeholder="/products/example.webp 또는 https://..."
         />
         <div className="settings-editor-grid__wide">
-          {(draft.imageUrl.trim() || editing?.previewImageUrl) ? <img
+          {draft.imageUrl.trim() ? <img
             className="settings-image-preview"
-            src={draft.imageUrl.trim() || editing?.previewImageUrl || ""}
+            src={draft.imageUrl.trim()}
             alt={`${draft.name || editing?.name || "새 상품"} 이미지 미리보기`}
           /> : <Badge tone="neutral">표시할 이미지가 없습니다.</Badge>}
         </div>
