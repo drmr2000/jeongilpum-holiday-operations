@@ -13,6 +13,27 @@ type CustomItemPayload = {
   otherRequest?: string;
 };
 
+type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
+type WorkStatus = "received" | "confirmed" | "in_progress" | "ready" | "completed" | "cancelled";
+
+type CreateItemPayload = {
+  productId?: string;
+  unitPrice?: number;
+  quantity?: number;
+  deliveryMethod?: DeliveryMethod;
+  dueAt?: string;
+  workStatus?: WorkStatus;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  postalCode?: string | null;
+  roadAddr?: string | null;
+  roadAddrReference?: string | null;
+  jibunAddr?: string | null;
+  detailAddr?: string | null;
+  customizationJson?: string | null;
+  note?: string;
+};
+
 type CreatePayload = {
   action?: "manual-create";
   idempotencyKey?: string;
@@ -31,7 +52,7 @@ type CreatePayload = {
   jibunAddr?: string;
   detailAddr?: string;
   note?: string;
-  items?: { productId?: string; quantity?: number }[];
+  items?: CreateItemPayload[];
   customItem?: CustomItemPayload | null;
 };
 
@@ -55,7 +76,7 @@ type ProductRow = {
 
 type ReceiptRow = {
   order_no: string;
-  delivery_method: "onsite_sale" | "onsite_reservation" | "delivery";
+  delivery_method: DeliveryMethod;
   due_at: string;
 };
 
@@ -75,9 +96,9 @@ type WorkItemRow = {
   unit_price_snapshot: number;
   quantity: number;
   line_total: number;
-  delivery_method: "onsite_sale" | "onsite_reservation" | "delivery";
+  delivery_method: DeliveryMethod;
   due_at: string;
-  work_status: "received" | "confirmed" | "in_progress" | "ready" | "completed" | "cancelled";
+  work_status: WorkStatus;
   recipient_name: string | null;
   recipient_phone: string | null;
   postal_code: string | null;
@@ -116,14 +137,40 @@ type CurrentOrderRow = {
   version: number;
 };
 
+type PreparedWorkItem = {
+  id: string;
+  productId: string;
+  productName: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+  deliveryMethod: DeliveryMethod;
+  dueAt: string;
+  workStatus: WorkStatus;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  postalCode: string | null;
+  roadAddr: string | null;
+  roadAddrReference: string | null;
+  jibunAddr: string | null;
+  detailAddr: string | null;
+  customizationJson: string | null;
+  note: string;
+};
+
+type ManualWorkItemInput = Omit<PreparedWorkItem, "id" | "productName" | "lineTotal">;
+
 const runtimeEnv = env as typeof env & { DB: D1Database };
 const customCategories = new Set(["진공세트", "프리미엄", "O'meat", "LA갈비", "뼈세트"]);
 const fulfillmentTypes = new Set(["onsite", "pickup", "shipping"]);
 const paymentMethods = new Set(["card", "cash", "bank_transfer"]);
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+const isoDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const deliveryMethods = new Set<DeliveryMethod>(["onsite_sale", "onsite_reservation", "delivery"]);
+const workStatuses = new Set<WorkStatus>(["received", "confirmed", "in_progress", "ready", "completed", "cancelled"]);
 
-function clean(value: string | undefined) {
-  return value?.trim() ?? "";
+function clean(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizePhone(value: string) {
@@ -140,6 +187,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function textValue(value: unknown) {
   return typeof value === "string" ? value.trim() : undefined;
+}
+
+function nullableText(value: unknown) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  return value.trim() || null;
 }
 
 function todayInSeoul() {
@@ -166,6 +219,182 @@ function nowInSeoul() {
   }).formatToParts(new Date());
   const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   return `${value("year")}-${value("month")}-${value("day")}T${value("hour")}:${value("minute")}:${value("second")}+09:00`;
+}
+
+function validDueAt(value: string) {
+  return isoDateTimePattern.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function buildWorkItem(input: Omit<PreparedWorkItem, "id" | "lineTotal">) {
+  if (
+    !Number.isInteger(input.unitPrice)
+    || input.unitPrice < 0
+    || !Number.isInteger(input.quantity)
+    || input.quantity < 1
+  ) {
+    return null;
+  }
+  const lineTotal = input.unitPrice * input.quantity;
+  if (!Number.isSafeInteger(lineTotal) || lineTotal < 0) return null;
+  return {
+    id: crypto.randomUUID(),
+    ...input,
+    lineTotal,
+  };
+}
+
+function workItemStatements(
+  workItems: PreparedWorkItem[],
+  {
+    orderId,
+    actor,
+    now,
+    eventValue,
+  }: {
+    orderId: string;
+    actor: string;
+    now: string;
+    eventValue: (item: PreparedWorkItem) => Record<string, unknown>;
+  },
+) {
+  return workItems.flatMap((item) => [
+    runtimeEnv.DB.prepare(`
+      INSERT INTO work_items(
+        id,order_id,product_id,product_name_snapshot,unit_price_snapshot,quantity,line_total,
+        delivery_method,due_at,work_status,recipient_name,recipient_phone,postal_code,
+        road_addr,road_addr_reference,jibun_addr,detail_addr,customization_json,note,
+        version,created_at,updated_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)
+    `).bind(
+      item.id,
+      orderId,
+      item.productId,
+      item.productName,
+      item.unitPrice,
+      item.quantity,
+      item.lineTotal,
+      item.deliveryMethod,
+      item.dueAt,
+      item.workStatus,
+      item.recipientName,
+      item.recipientPhone,
+      item.postalCode,
+      item.roadAddr,
+      item.roadAddrReference,
+      item.jibunAddr,
+      item.detailAddr,
+      item.customizationJson,
+      item.note,
+      now,
+      now,
+    ),
+    runtimeEnv.DB.prepare(`
+      INSERT INTO work_item_events(
+        id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
+      ) VALUES(?,?,?,'work_item_created',NULL,?,?,?)
+    `).bind(
+      crypto.randomUUID(),
+      item.id,
+      orderId,
+      JSON.stringify(eventValue(item)),
+      actor,
+      now,
+    ),
+  ]);
+}
+
+async function productsForIds(productIds: string[]) {
+  if (!productIds.length) return [] as ProductRow[];
+  const result = await runtimeEnv.DB.prepare(`
+    SELECT id,name,price,daily_limit,active
+    FROM products
+    WHERE id IN (${productIds.map(() => "?").join(",")})
+  `).bind(...productIds).all<ProductRow>();
+  return result.results;
+}
+
+async function prepareManualWorkItems(payload: CreatePayload) {
+  const payloadItems = payload.items ?? [];
+  if (!Array.isArray(payloadItems)) return { error: "새 작업 정보를 확인해주세요." };
+
+  const itemInputs: ManualWorkItemInput[] = [];
+  for (const item of payloadItems) {
+    if (!isRecord(item)) return { error: "새 작업 정보를 확인해주세요." };
+    const productId = clean(item.productId);
+    const dueAt = clean(item.dueAt);
+    const deliveryMethod = item.deliveryMethod;
+    const workStatus = item.workStatus ?? "received";
+    const unitPrice = item.unitPrice;
+    const quantity = item.quantity;
+    const recipientName = nullableText(item.recipientName);
+    const recipientPhone = nullableText(item.recipientPhone);
+    const postalCode = nullableText(item.postalCode);
+    const roadAddr = nullableText(item.roadAddr);
+    const roadAddrReference = nullableText(item.roadAddrReference);
+    const jibunAddr = nullableText(item.jibunAddr);
+    const detailAddr = nullableText(item.detailAddr);
+    const customizationJson = nullableText(item.customizationJson);
+    const note = item.note === undefined ? "" : textValue(item.note);
+    if (
+      !productId
+      || !validDueAt(dueAt)
+      || typeof unitPrice !== "number"
+      || !Number.isInteger(unitPrice)
+      || typeof quantity !== "number"
+      || !Number.isInteger(quantity)
+      || typeof deliveryMethod !== "string"
+      || !deliveryMethods.has(deliveryMethod as DeliveryMethod)
+      || typeof workStatus !== "string"
+      || !workStatuses.has(workStatus as WorkStatus)
+      || recipientName === undefined
+      || recipientPhone === undefined
+      || postalCode === undefined
+      || roadAddr === undefined
+      || roadAddrReference === undefined
+      || jibunAddr === undefined
+      || detailAddr === undefined
+      || customizationJson === undefined
+      || note === undefined
+    ) {
+      return { error: "새 작업 정보를 확인해주세요." };
+    }
+    itemInputs.push({
+      productId,
+      unitPrice,
+      quantity,
+      deliveryMethod: deliveryMethod as DeliveryMethod,
+      dueAt,
+      workStatus: workStatus as WorkStatus,
+      recipientName,
+      recipientPhone,
+      postalCode,
+      roadAddr,
+      roadAddrReference,
+      jibunAddr,
+      detailAddr,
+      customizationJson,
+      note,
+    });
+  }
+
+  const productIds = [...new Set(itemInputs.map((item) => item.productId))];
+  const products = await productsForIds(productIds);
+  if (products.length !== productIds.length) {
+    return { error: "상품을 찾을 수 없습니다.", status: 404 };
+  }
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  const workItems: PreparedWorkItem[] = [];
+  for (const item of itemInputs) {
+    const product = productsById.get(item.productId);
+    if (!product) return { error: "상품을 찾을 수 없습니다.", status: 404 };
+    const workItem = buildWorkItem({
+      ...item,
+      productName: product.name,
+    });
+    if (!workItem) return { error: "상품 금액과 수량을 확인해주세요." };
+    workItems.push(workItem);
+  }
+  return { workItems };
 }
 
 function validIsoDate(value: string) {
@@ -305,11 +534,17 @@ async function createManualOrder(payload: CreatePayload) {
     });
   }
 
+  const preparedItems = await prepareManualWorkItems(payload);
+  if ("error" in preparedItems) {
+    return Response.json({ error: preparedItems.error }, { status: preparedItems.status ?? 400 });
+  }
+
   const orderId = crypto.randomUUID();
   const orderNo = createOrderNo();
   const buyerName = clean(payload.buyerName) || "주문자 미입력";
   const buyerPhone = normalizePhone(payload.buyerPhone ?? "");
   const now = new Date().toISOString();
+  const totalAmount = preparedItems.workItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
   try {
     await runtimeEnv.DB.batch([
@@ -325,7 +560,7 @@ async function createManualOrder(payload: CreatePayload) {
         buyerPhone,
         "unpaid",
         0,
-        0,
+        totalAmount,
         "",
         idempotencyKey,
         now,
@@ -342,6 +577,18 @@ async function createManualOrder(payload: CreatePayload) {
         OPERATOR_ACTOR,
         now,
       ),
+      ...workItemStatements(preparedItems.workItems, {
+        orderId,
+        actor: OPERATOR_ACTOR,
+        now,
+        eventValue: (item) => ({
+          deliveryMethod: item.deliveryMethod,
+          dueAt: item.dueAt,
+          workStatus: item.workStatus,
+          idempotencyKey,
+          manual: true,
+        }),
+      }),
     ]);
   } catch (error) {
     const concurrent = await manualOrderForIdempotency(idempotencyKey);
@@ -502,16 +749,10 @@ export async function POST(request: Request) {
 
     const standardProductIds = [...new Set(standardItems.map((item) => item.productId as string))];
     const productIds = customValid ? [...new Set([...standardProductIds, "custom-order"])] : standardProductIds;
-    const products = productIds.length
-      ? await runtimeEnv.DB.prepare(`
-        SELECT id,name,price,daily_limit,active
-        FROM products
-        WHERE id IN (${productIds.map(() => "?").join(",")})
-      `).bind(...productIds).all<ProductRow>()
-      : { results: [] as ProductRow[] };
+    const products = await productsForIds(productIds);
     if (
-      products.results.length !== productIds.length
-      || standardProductIds.some((id) => !products.results.find((product) => product.id === id && product.active))
+      products.length !== productIds.length
+      || standardProductIds.some((id) => !products.find((product) => product.id === id && product.active))
     ) {
       return Response.json({ error: "현재 주문할 수 없는 상품이 포함되어 있습니다." }, { status: 409 });
     }
@@ -534,7 +775,7 @@ export async function POST(request: Request) {
       lineTotal: number;
     }>();
     for (const item of standardItems) {
-      const product = products.results.find((value) => value.id === item.productId)!;
+      const product = products.find((value) => value.id === item.productId)!;
       const key = [product.id, deliveryMethod, dueAt, fulfillmentType === "shipping" ? recipientPhone : ""].join("\u0000");
       const current = mergedItems.get(key);
       const quantity = item.quantity as number;
@@ -545,25 +786,50 @@ export async function POST(request: Request) {
         mergedItems.set(key, { product, quantity, lineTotal: product.price * quantity });
       }
     }
-    const workItems = [...mergedItems.values()].map((item) => ({
-      id: crypto.randomUUID(),
-      productId: item.product.id,
-      productName: item.product.name,
-      unitPrice: item.product.price,
-      quantity: item.quantity,
-      lineTotal: item.lineTotal,
-      customizationJson: null as string | null,
-    }));
+    const workItems: PreparedWorkItem[] = [];
+    for (const item of mergedItems.values()) {
+      const workItem = buildWorkItem({
+        productId: item.product.id,
+        productName: item.product.name,
+        unitPrice: item.product.price,
+        quantity: item.quantity,
+        deliveryMethod,
+        dueAt,
+        workStatus,
+        recipientName: fulfillmentType === "shipping" ? recipientName : null,
+        recipientPhone: fulfillmentType === "shipping" ? recipientPhone : null,
+        postalCode: fulfillmentType === "shipping" ? postalCode : null,
+        roadAddr: fulfillmentType === "shipping" ? roadAddr : null,
+        roadAddrReference: fulfillmentType === "shipping" ? clean(payload.roadAddrReference) || null : null,
+        jibunAddr: fulfillmentType === "shipping" ? clean(payload.jibunAddr) || null : null,
+        detailAddr: fulfillmentType === "shipping" ? detailAddr : null,
+        customizationJson: null,
+        note: clean(payload.note),
+      });
+      if (!workItem) return Response.json({ error: "상품 금액과 수량을 확인해주세요." }, { status: 400 });
+      workItems.push(workItem);
+    }
     if (customValid && custom) {
-      workItems.push({
-        id: crypto.randomUUID(),
+      const workItem = buildWorkItem({
         productId: "custom-order",
         productName: `맞춤주문 · ${clean(custom.category)}`,
         unitPrice: customAmount,
         quantity: 1,
-        lineTotal: customAmount,
+        deliveryMethod,
+        dueAt,
+        workStatus,
+        recipientName: fulfillmentType === "shipping" ? recipientName : null,
+        recipientPhone: fulfillmentType === "shipping" ? recipientPhone : null,
+        postalCode: fulfillmentType === "shipping" ? postalCode : null,
+        roadAddr: fulfillmentType === "shipping" ? roadAddr : null,
+        roadAddrReference: fulfillmentType === "shipping" ? clean(payload.roadAddrReference) || null : null,
+        jibunAddr: fulfillmentType === "shipping" ? clean(payload.jibunAddr) || null : null,
+        detailAddr: fulfillmentType === "shipping" ? detailAddr : null,
         customizationJson: JSON.stringify(custom),
+        note: clean(payload.note),
       });
+      if (!workItem) return Response.json({ error: "상품 금액과 수량을 확인해주세요." }, { status: 400 });
+      workItems.push(workItem);
     }
 
     const reserved = await runtimeEnv.DB.prepare(`
@@ -578,7 +844,7 @@ export async function POST(request: Request) {
       requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) ?? 0) + item.quantity);
     }
     for (const [productId, quantity] of requestedByProduct) {
-      const product = products.results.find((value) => value.id === productId);
+      const product = products.find((value) => value.id === productId);
       if (product && product.daily_limit !== null && (reservedByProduct.get(productId) ?? 0) + quantity > product.daily_limit) {
         return Response.json({ error: "선택한 날짜의 한정수량이 마감되었습니다. 수량 또는 날짜를 다시 확인해주세요." }, { status: 409 });
       }
@@ -608,55 +874,17 @@ export async function POST(request: Request) {
         now,
         now,
       ),
-      ...workItems.flatMap((item) => [
-        runtimeEnv.DB.prepare(`
-          INSERT INTO work_items(
-            id,order_id,product_id,product_name_snapshot,unit_price_snapshot,quantity,line_total,
-            delivery_method,due_at,work_status,recipient_name,recipient_phone,postal_code,
-            road_addr,road_addr_reference,jibun_addr,detail_addr,customization_json,note,
-            version,created_at,updated_at
-          ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)
-        `).bind(
-          item.id,
-          orderId,
-          item.productId,
-          item.productName,
-          item.unitPrice,
-          item.quantity,
-          item.lineTotal,
-          deliveryMethod,
-          dueAt,
-          workStatus,
-          fulfillmentType === "shipping" ? recipientName : null,
-          fulfillmentType === "shipping" ? recipientPhone : null,
-          fulfillmentType === "shipping" ? postalCode : null,
-          fulfillmentType === "shipping" ? roadAddr : null,
-          fulfillmentType === "shipping" ? clean(payload.roadAddrReference) || null : null,
-          fulfillmentType === "shipping" ? clean(payload.jibunAddr) || null : null,
-          fulfillmentType === "shipping" ? detailAddr : null,
-          item.customizationJson,
-          clean(payload.note),
-          now,
-          now,
-        ),
-        runtimeEnv.DB.prepare(`
-          INSERT INTO work_item_events(
-            id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
-          ) VALUES(?,?,?,'work_item_created',NULL,?,?,?)
-        `).bind(
-          crypto.randomUUID(),
-          item.id,
-          orderId,
-          JSON.stringify({
-            deliveryMethod,
-            dueAt,
-            workStatus,
-            paymentMethod: fulfillmentType === "onsite" ? paymentChoice : null,
-          }),
-          actor,
-          now,
-        ),
-      ]),
+      ...workItemStatements(workItems, {
+        orderId,
+        actor,
+        now,
+        eventValue: (item) => ({
+          deliveryMethod: item.deliveryMethod,
+          dueAt: item.dueAt,
+          workStatus: item.workStatus,
+          paymentMethod: fulfillmentType === "onsite" ? paymentChoice : null,
+        }),
+      }),
     ];
     await runtimeEnv.DB.batch(statements);
     return Response.json({

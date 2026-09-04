@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import OpsHeader from "./OpsHeader";
 import {
   Badge,
@@ -143,6 +143,11 @@ type OrderDraft = {
   buyerPhone: string;
 };
 
+type NewOrderWorkItem = {
+  id: string;
+  draft: WorkDraft;
+};
+
 type OrderSelection = {
   order: CustomerOrder;
   buyerName: string;
@@ -212,6 +217,38 @@ function toDueAt(value: string) {
 
 function nullable(value: string) {
   return value.trim() || null;
+}
+
+function emptyWorkDraft(): WorkDraft {
+  return {
+    productId: "",
+    unitPrice: "",
+    quantity: "1",
+    deliveryMethod: "onsite_reservation",
+    dueAt: `${todayInSeoul()}T10:00`,
+    recipientName: "",
+    recipientPhone: "",
+    postalCode: "",
+    roadAddr: "",
+    roadAddrReference: "",
+    jibunAddr: "",
+    detailAddr: "",
+    customizationJson: "",
+    workStatus: "received",
+    note: "",
+  };
+}
+
+function workDraftError(draft: WorkDraft) {
+  if (!draft.productId) return "상품을 선택해주세요.";
+  if (!Number.isInteger(Number(draft.quantity)) || Number(draft.quantity) < 1) {
+    return "수량은 1 이상의 정수여야 합니다.";
+  }
+  if (!Number.isInteger(Number(draft.unitPrice)) || Number(draft.unitPrice) < 0) {
+    return "상품 단가는 0 이상의 정수여야 합니다.";
+  }
+  if (!draft.dueAt) return "수령일시를 입력해주세요.";
+  return "";
 }
 
 function won(value: number) {
@@ -501,7 +538,7 @@ export default function SalesApp() {
     await reloadActive();
   };
 
-  const createOrder = async (draft: OrderDraft, idempotencyKey: string) => {
+  const createOrder = async (draft: OrderDraft, workItems: WorkDraft[], idempotencyKey: string) => {
     const response = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -510,12 +547,29 @@ export default function SalesApp() {
         idempotencyKey,
         buyerName: draft.buyerName,
         buyerPhone: draft.buyerPhone,
+        items: workItems.map((item) => ({
+          productId: item.productId,
+          unitPrice: Number(item.unitPrice),
+          quantity: Number(item.quantity),
+          deliveryMethod: item.deliveryMethod,
+          dueAt: toDueAt(item.dueAt),
+          recipientName: nullable(item.recipientName),
+          recipientPhone: nullable(item.recipientPhone),
+          postalCode: nullable(item.postalCode),
+          roadAddr: nullable(item.roadAddr),
+          roadAddrReference: nullable(item.roadAddrReference),
+          jibunAddr: nullable(item.jibunAddr),
+          detailAddr: nullable(item.detailAddr),
+          customizationJson: nullable(item.customizationJson),
+          workStatus: item.workStatus,
+          note: item.note,
+        })),
       }),
     });
     await responseData(response);
     setNewOrderOpen(false);
     setTab("customers");
-    setNotice("새 주문을 추가했습니다. 작업 항목을 추가해주세요.");
+    setNotice(workItems.length ? "새 주문과 작업 항목을 추가했습니다." : "새 주문을 추가했습니다. 작업 항목을 추가해주세요.");
   };
 
   const saveOrder = async (selection: OrderSelection, draft: OrderDraft) => {
@@ -1044,25 +1098,10 @@ function WorkItemEditor({
   const [allowWorkStatusOverride, setAllowWorkStatusOverride] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const productUrl = draft.dueAt ? `/api/products?date=${encodeURIComponent(draft.dueAt.slice(0, 10))}` : null;
-  const { data: productData } = useResource<ProductResponse>(productUrl, 15000);
   const { data: historyData, error: historyError } = useResource<WorkItemHistoryResponse>(
     `/api/orders?workItemId=${encodeURIComponent(item.id)}`,
     2500,
   );
-  const products = productData?.products ?? [];
-  const selectedProduct = products.find((product) => product.id === draft.productId);
-  const currentReservation = selectedProduct
-    ? selectedProduct.reservedQuantity - (selectedProduct.id === item.productId && draft.dueAt.slice(0, 10) === item.dueAt.slice(0, 10) ? item.quantity : 0)
-    : 0;
-  const wouldExceedDailyLimit = Boolean(
-    selectedProduct?.dailyLimit !== null
-    && selectedProduct?.dailyLimit !== undefined
-    && currentReservation + Number(draft.quantity) > selectedProduct.dailyLimit,
-  );
-  const productOptions = products.some((product) => product.id === item.productId)
-    ? products
-    : [{ id: item.productId, name: item.productName, price: item.unitPrice, dailyLimit: item.productDailyLimit, reservedQuantity: item.productScheduledQuantity }, ...products];
 
   const update = <Key extends keyof WorkDraft>(key: Key, value: WorkDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -1107,24 +1146,12 @@ function WorkItemEditor({
       </>}
     >
       <form id="sales-work-item-editor" className="sales-work-table__editor" onSubmit={submit}>
-        <div className="sales-work-table__editor-grid">
-          <FieldSelect id="work-product" label="상품" value={draft.productId} onChange={(event) => {
-            const product = productOptions.find((value) => value.id === event.target.value);
-            update("productId", event.target.value);
-            if (product) update("unitPrice", String(product.price));
-          }}>
-            {productOptions.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
-          </FieldSelect>
-          <FieldInput id="work-unit-price" label="상품 단가" type="number" min="0" step="1" value={draft.unitPrice} onChange={(event) => update("unitPrice", event.target.value)} />
-          <FieldInput id="work-quantity" label="수량" type="number" min="1" step="1" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} />
-          <FieldSelect id="work-delivery" label="수령방법" value={draft.deliveryMethod} onChange={(event) => update("deliveryMethod", event.target.value as DeliveryMethod)}>
-            {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </FieldSelect>
-          <FieldInput id="work-due-at" label="수령일시" type="datetime-local" value={draft.dueAt} onChange={(event) => update("dueAt", event.target.value)} />
-          <FieldSelect id="work-status" label="작업 상태" value={draft.workStatus} onChange={(event) => update("workStatus", event.target.value as WorkStatus)}>
-            {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </FieldSelect>
-          <label className="sales-work-table__editor-wide">
+        <WorkItemFields
+          draft={draft}
+          idPrefix="work"
+          existingItem={item}
+          onChange={update}
+          statusExtra={<label className="sales-work-table__editor-wide">
             <input
               type="checkbox"
               checked={allowWorkStatusOverride}
@@ -1132,20 +1159,8 @@ function WorkItemEditor({
               onChange={(event) => setAllowWorkStatusOverride(event.target.checked)}
             />
             작업 상태 수동 정정
-          </label>
-          <FieldInput id="work-recipient-name" label="수령자 성함" value={draft.recipientName} onChange={(event) => update("recipientName", event.target.value)} />
-          <FieldInput id="work-recipient-phone" label="수령자 전화번호" value={draft.recipientPhone} onChange={(event) => update("recipientPhone", event.target.value)} />
-          {draft.deliveryMethod === "delivery" ? <>
-            <FieldInput id="work-postal-code" label="우편번호" value={draft.postalCode} onChange={(event) => update("postalCode", event.target.value)} />
-            <FieldInput id="work-road-address" label="도로명 주소" value={draft.roadAddr} onChange={(event) => update("roadAddr", event.target.value)} />
-            <FieldInput id="work-road-reference" label="주소 참고" value={draft.roadAddrReference} onChange={(event) => update("roadAddrReference", event.target.value)} />
-            <FieldInput id="work-jibun-address" label="지번 주소" value={draft.jibunAddr} onChange={(event) => update("jibunAddr", event.target.value)} />
-            <FieldInput id="work-detail-address" className="sales-work-table__editor-wide" label="상세 주소" value={draft.detailAddr} onChange={(event) => update("detailAddr", event.target.value)} />
-          </> : null}
-          <FieldTextarea id="work-customization" className="sales-work-table__editor-wide" label="구성 정보" rows={2} value={draft.customizationJson} onChange={(event) => update("customizationJson", event.target.value)} />
-          <FieldTextarea id="work-note" className="sales-work-table__editor-wide" label="메모" rows={3} value={draft.note} onChange={(event) => update("note", event.target.value)} />
-        </div>
-        {wouldExceedDailyLimit && selectedProduct && selectedProduct.dailyLimit !== null ? <p className="sales-work-table__warning">선택한 수령일의 {selectedProduct.name} 수량이 {currentReservation + Number(draft.quantity)}개로 일일 기준 {selectedProduct.dailyLimit}개를 초과합니다. 운영자 저장은 제한하지 않습니다.</p> : null}
+          </label>}
+        />
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
       </form>
       <WorkItemHistory
@@ -1225,19 +1240,151 @@ function NewOrderEditor({
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (draft: OrderDraft, idempotencyKey: string) => Promise<void>;
+  onCreate: (draft: OrderDraft, workItems: WorkDraft[], idempotencyKey: string) => Promise<void>;
 }) {
+  const [draft, setDraft] = useState<OrderDraft>({ buyerName: "", buyerPhone: "" });
+  const [workItems, setWorkItems] = useState<NewOrderWorkItem[]>(() => [{
+    id: crypto.randomUUID(),
+    draft: emptyWorkDraft(),
+  }]);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const updateOrder = <Key extends keyof OrderDraft>(key: Key, value: OrderDraft[Key]) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateWorkItem = <Key extends keyof WorkDraft>(id: string, key: Key, value: WorkDraft[Key]) => {
+    setWorkItems((current) => current.map((item) => (
+      item.id === id ? { ...item, draft: { ...item.draft, [key]: value } } : item
+    )));
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const invalidItemIndex = workItems.findIndex((item) => workDraftError(item.draft));
+    if (invalidItemIndex !== -1) {
+      setError(`작업 항목 ${invalidItemIndex + 1}: ${workDraftError(workItems[invalidItemIndex].draft)}`);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onCreate(draft, workItems.map((item) => item.draft), idempotencyKey);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "새 주문을 추가하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <OrderEditor
+    <Modal
+      open
       title="새 주문 추가"
-      description="주문을 추가한 뒤 필요한 작업 항목을 등록할 수 있습니다."
-      initialDraft={{ buyerName: "", buyerPhone: "" }}
-      submitLabel="추가"
+      description="주문과 필요한 작업 항목을 함께 등록합니다."
       onClose={onClose}
-      onSave={(draft) => onCreate(draft, idempotencyKey)}
-    />
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>닫기</Button>
+        <Button disabled={saving} onClick={() => (document.getElementById("sales-new-order-editor") as HTMLFormElement | null)?.requestSubmit()}>{saving ? "저장 중" : "추가"}</Button>
+      </>}
+    >
+      <form id="sales-new-order-editor" className="sales-work-table__editor" onSubmit={submit}>
+        <div className="sales-work-table__editor-grid">
+          <FieldInput id="new-order-buyer-name" label="주문자 성함" value={draft.buyerName} onChange={(event) => updateOrder("buyerName", event.target.value)} />
+          <FieldInput id="new-order-buyer-phone" label="주문자 전화번호" inputMode="tel" value={draft.buyerPhone} onChange={(event) => updateOrder("buyerPhone", event.target.value)} />
+        </div>
+        {workItems.map((item, index) => (
+          <section key={item.id} className="sales-work-table__editor" aria-label={`작업 항목 ${index + 1}`}>
+            <div>
+              <strong>작업 항목 {index + 1}</strong>
+              <Button size="sm" variant="ghost" onClick={() => setWorkItems((current) => current.filter((value) => value.id !== item.id))}>행 삭제</Button>
+            </div>
+            <WorkItemFields
+              draft={item.draft}
+              idPrefix={`new-order-${item.id}`}
+              onChange={(key, value) => updateWorkItem(item.id, key, value)}
+            />
+          </section>
+        ))}
+        <Button variant="ghost" onClick={() => setWorkItems((current) => [...current, { id: crypto.randomUUID(), draft: emptyWorkDraft() }])}>작업 항목 추가</Button>
+        {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
+      </form>
+    </Modal>
+  );
+}
+
+function WorkItemFields({
+  draft,
+  idPrefix,
+  existingItem,
+  onChange,
+  statusExtra,
+}: {
+  draft: WorkDraft;
+  idPrefix: string;
+  existingItem?: WorkItem;
+  onChange: <Key extends keyof WorkDraft>(key: Key, value: WorkDraft[Key]) => void;
+  statusExtra?: ReactNode;
+}) {
+  const productUrl = draft.dueAt ? `/api/products?date=${encodeURIComponent(draft.dueAt.slice(0, 10))}` : null;
+  const { data: productData } = useResource<ProductResponse>(productUrl, 15000);
+  const products = productData?.products ?? [];
+  const productOptions = existingItem && !products.some((product) => product.id === existingItem.productId)
+    ? [{ id: existingItem.productId, name: existingItem.productName, price: existingItem.unitPrice, dailyLimit: existingItem.productDailyLimit, reservedQuantity: existingItem.productScheduledQuantity }, ...products]
+    : products;
+  const selectedProduct = productOptions.find((product) => product.id === draft.productId);
+  const currentReservation = selectedProduct
+    ? selectedProduct.reservedQuantity - (
+      existingItem
+      && selectedProduct.id === existingItem.productId
+      && draft.dueAt.slice(0, 10) === existingItem.dueAt.slice(0, 10)
+        ? existingItem.quantity
+        : 0
+    )
+    : 0;
+  const wouldExceedDailyLimit = Boolean(
+    selectedProduct
+    && selectedProduct.dailyLimit !== null
+    && currentReservation + Number(draft.quantity) > selectedProduct.dailyLimit,
+  );
+
+  return (
+    <>
+      <div className="sales-work-table__editor-grid">
+        <FieldSelect id={`${idPrefix}-product`} label="상품" value={draft.productId} onChange={(event) => {
+          const product = productOptions.find((value) => value.id === event.target.value);
+          onChange("productId", event.target.value);
+          if (product) onChange("unitPrice", String(product.price));
+        }}>
+          {existingItem ? null : <option value="">상품 선택</option>}
+          {productOptions.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+        </FieldSelect>
+        <FieldInput id={`${idPrefix}-unit-price`} label="상품 단가" type="number" min="0" step="1" value={draft.unitPrice} onChange={(event) => onChange("unitPrice", event.target.value)} />
+        <FieldInput id={`${idPrefix}-quantity`} label="수량" type="number" min="1" step="1" value={draft.quantity} onChange={(event) => onChange("quantity", event.target.value)} />
+        <FieldSelect id={`${idPrefix}-delivery`} label="수령방법" value={draft.deliveryMethod} onChange={(event) => onChange("deliveryMethod", event.target.value as DeliveryMethod)}>
+          {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </FieldSelect>
+        <FieldInput id={`${idPrefix}-due-at`} label="수령일시" type="datetime-local" value={draft.dueAt} onChange={(event) => onChange("dueAt", event.target.value)} />
+        <FieldSelect id={`${idPrefix}-status`} label="작업 상태" value={draft.workStatus} onChange={(event) => onChange("workStatus", event.target.value as WorkStatus)}>
+          {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </FieldSelect>
+        {statusExtra}
+        <FieldInput id={`${idPrefix}-recipient-name`} label="수령자 성함" value={draft.recipientName} onChange={(event) => onChange("recipientName", event.target.value)} />
+        <FieldInput id={`${idPrefix}-recipient-phone`} label="수령자 전화번호" value={draft.recipientPhone} onChange={(event) => onChange("recipientPhone", event.target.value)} />
+        {draft.deliveryMethod === "delivery" ? <>
+          <FieldInput id={`${idPrefix}-postal-code`} label="우편번호" value={draft.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} />
+          <FieldInput id={`${idPrefix}-road-address`} label="도로명 주소" value={draft.roadAddr} onChange={(event) => onChange("roadAddr", event.target.value)} />
+          <FieldInput id={`${idPrefix}-road-reference`} label="주소 참고" value={draft.roadAddrReference} onChange={(event) => onChange("roadAddrReference", event.target.value)} />
+          <FieldInput id={`${idPrefix}-jibun-address`} label="지번 주소" value={draft.jibunAddr} onChange={(event) => onChange("jibunAddr", event.target.value)} />
+          <FieldInput id={`${idPrefix}-detail-address`} className="sales-work-table__editor-wide" label="상세 주소" value={draft.detailAddr} onChange={(event) => onChange("detailAddr", event.target.value)} />
+        </> : null}
+        <FieldTextarea id={`${idPrefix}-customization`} className="sales-work-table__editor-wide" label="구성 정보" rows={2} value={draft.customizationJson} onChange={(event) => onChange("customizationJson", event.target.value)} />
+        <FieldTextarea id={`${idPrefix}-note`} className="sales-work-table__editor-wide" label="메모" rows={3} value={draft.note} onChange={(event) => onChange("note", event.target.value)} />
+      </div>
+      {wouldExceedDailyLimit && selectedProduct && selectedProduct.dailyLimit !== null ? <p className="sales-work-table__warning">선택한 수령일의 {selectedProduct.name} 수량이 {currentReservation + Number(draft.quantity)}개로 일일 기준 {selectedProduct.dailyLimit}개를 초과합니다. 운영자 저장은 제한하지 않습니다.</p> : null}
+    </>
   );
 }
 
@@ -1250,35 +1397,10 @@ function NewWorkItemEditor({
   onClose: () => void;
   onCreate: (order: CustomerOrder, draft: WorkDraft, idempotencyKey: string) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<WorkDraft>(() => ({
-    productId: "",
-    unitPrice: "",
-    quantity: "1",
-    deliveryMethod: "onsite_reservation",
-    dueAt: `${todayInSeoul()}T10:00`,
-    recipientName: "",
-    recipientPhone: "",
-    postalCode: "",
-    roadAddr: "",
-    roadAddrReference: "",
-    jibunAddr: "",
-    detailAddr: "",
-    customizationJson: "",
-    workStatus: "received",
-    note: "",
-  }));
+  const [draft, setDraft] = useState<WorkDraft>(emptyWorkDraft);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const productUrl = draft.dueAt ? `/api/products?date=${encodeURIComponent(draft.dueAt.slice(0, 10))}` : null;
-  const { data: productData } = useResource<ProductResponse>(productUrl, 15000);
-  const products = productData?.products ?? [];
-  const selectedProduct = products.find((product) => product.id === draft.productId);
-  const wouldExceedDailyLimit = Boolean(
-    selectedProduct
-    && selectedProduct.dailyLimit !== null
-    && selectedProduct.reservedQuantity + Number(draft.quantity) > selectedProduct.dailyLimit,
-  );
 
   const update = <Key extends keyof WorkDraft>(key: Key, value: WorkDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -1286,20 +1408,9 @@ function NewWorkItemEditor({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!draft.productId) {
-      setError("상품을 선택해주세요.");
-      return;
-    }
-    if (!Number.isInteger(Number(draft.quantity)) || Number(draft.quantity) < 1) {
-      setError("수량은 1 이상의 정수여야 합니다.");
-      return;
-    }
-    if (!Number.isInteger(Number(draft.unitPrice)) || Number(draft.unitPrice) < 0) {
-      setError("상품 단가는 0 이상의 정수여야 합니다.");
-      return;
-    }
-    if (!draft.dueAt) {
-      setError("수령일시를 입력해주세요.");
+    const validationError = workDraftError(draft);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     setSaving(true);
@@ -1325,37 +1436,7 @@ function NewWorkItemEditor({
       </>}
     >
       <form id="sales-new-work-editor" className="sales-work-table__editor" onSubmit={submit}>
-        <div className="sales-work-table__editor-grid">
-          <FieldSelect id="new-work-product" label="상품" value={draft.productId} onChange={(event) => {
-            const product = products.find((value) => value.id === event.target.value);
-            update("productId", event.target.value);
-            if (product) update("unitPrice", String(product.price));
-          }}>
-            <option value="">상품 선택</option>
-            {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
-          </FieldSelect>
-          <FieldInput id="new-work-unit-price" label="상품 단가" type="number" min="0" step="1" value={draft.unitPrice} onChange={(event) => update("unitPrice", event.target.value)} />
-          <FieldInput id="new-work-quantity" label="수량" type="number" min="1" step="1" value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} />
-          <FieldSelect id="new-work-delivery" label="수령방법" value={draft.deliveryMethod} onChange={(event) => update("deliveryMethod", event.target.value as DeliveryMethod)}>
-            {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </FieldSelect>
-          <FieldInput id="new-work-due-at" label="수령일시" type="datetime-local" value={draft.dueAt} onChange={(event) => update("dueAt", event.target.value)} />
-          <FieldSelect id="new-work-status" label="작업 상태" value={draft.workStatus} onChange={(event) => update("workStatus", event.target.value as WorkStatus)}>
-            {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </FieldSelect>
-          <FieldInput id="new-work-recipient-name" label="수령자 성함" value={draft.recipientName} onChange={(event) => update("recipientName", event.target.value)} />
-          <FieldInput id="new-work-recipient-phone" label="수령자 전화번호" value={draft.recipientPhone} onChange={(event) => update("recipientPhone", event.target.value)} />
-          {draft.deliveryMethod === "delivery" ? <>
-            <FieldInput id="new-work-postal-code" label="우편번호" value={draft.postalCode} onChange={(event) => update("postalCode", event.target.value)} />
-            <FieldInput id="new-work-road-address" label="도로명 주소" value={draft.roadAddr} onChange={(event) => update("roadAddr", event.target.value)} />
-            <FieldInput id="new-work-road-reference" label="주소 참고" value={draft.roadAddrReference} onChange={(event) => update("roadAddrReference", event.target.value)} />
-            <FieldInput id="new-work-jibun-address" label="지번 주소" value={draft.jibunAddr} onChange={(event) => update("jibunAddr", event.target.value)} />
-            <FieldInput id="new-work-detail-address" className="sales-work-table__editor-wide" label="상세 주소" value={draft.detailAddr} onChange={(event) => update("detailAddr", event.target.value)} />
-          </> : null}
-          <FieldTextarea id="new-work-customization" className="sales-work-table__editor-wide" label="구성 정보" rows={2} value={draft.customizationJson} onChange={(event) => update("customizationJson", event.target.value)} />
-          <FieldTextarea id="new-work-note" className="sales-work-table__editor-wide" label="메모" rows={3} value={draft.note} onChange={(event) => update("note", event.target.value)} />
-        </div>
-        {wouldExceedDailyLimit && selectedProduct && selectedProduct.dailyLimit !== null ? <p className="sales-work-table__warning">선택한 수령일의 {selectedProduct.name} 수량이 {selectedProduct.reservedQuantity + Number(draft.quantity)}개로 일일 기준 {selectedProduct.dailyLimit}개를 초과합니다. 운영자 저장은 제한하지 않습니다.</p> : null}
+        <WorkItemFields draft={draft} idPrefix="new-work" onChange={update} />
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
       </form>
     </Modal>
