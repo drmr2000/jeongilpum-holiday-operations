@@ -9,5 +9,5 @@ export type PackageStatus = keyof typeof PACKAGE_STATUS_LABELS;
 
 export const PACKAGE_STATUS_TONES: Record<PackageStatus, BadgeTone> = {
   queued: "neutral",
-  completed: "green",
+  completed: "green-strong",
 };

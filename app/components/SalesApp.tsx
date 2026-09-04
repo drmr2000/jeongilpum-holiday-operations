@@ -162,7 +162,7 @@ const DELIVERY_LABELS: Record<DeliveryMethod, string> = {
 const DELIVERY_TONES: Record<DeliveryMethod, import("../ui").BadgeTone> = {
   onsite_sale: "neutral",
   onsite_reservation: "amber",
-  delivery: "slate",
+  delivery: "wine",
 };
 
 function todayInSeoul() {
@@ -626,18 +626,7 @@ export default function SalesApp() {
     {
       id: "status",
       header: "작업상태",
-      cell: (item) => {
-        if (item.workStatus !== "received") return <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>;
-        return <Badge
-          tone={workStatusTone(item.workStatus)}
-          onClick={(event) => {
-            event.stopPropagation();
-            void updateWork(item, { workStatus: "confirmed" }, `${workStatusLabel("confirmed")} 상태로 변경했습니다.`);
-          }}
-        >
-          {WORK_STATUS_LABELS[item.workStatus]}
-        </Badge>;
-      },
+      cell: (item) => <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
       sortValue: (item) => item.workStatus,
       width: "94px",
     },
@@ -651,6 +640,18 @@ export default function SalesApp() {
       id: "actions",
       header: "처리",
       cell: (item) => <div className="sales-work-table__actions">
+        {item.workStatus === "received" ? (
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={(event) => {
+              event.stopPropagation();
+              void updateWork(item, { workStatus: "confirmed" }, `${workStatusLabel("confirmed")} 상태로 변경했습니다.`);
+            }}
+          >
+            {workStatusLabel("confirmed")}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant={item.customerArrivedAt ? "ghost" : "primary"}
@@ -662,7 +663,7 @@ export default function SalesApp() {
           {item.customerArrivedAt ? "도착 취소" : "주문 도착"}
         </Button>
       </div>,
-      width: "100px",
+      width: "176px",
     },
   ];
 

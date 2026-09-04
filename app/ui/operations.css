@@ -162,8 +162,8 @@
   position: fixed;
   z-index: 20;
   bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  inset-inline: 0;
+  margin-inline: auto;
   width: min(100%, 780px);
   height: 68px;
   background: #fff;
@@ -255,8 +255,8 @@
   color: #326e9e;
 }
 .state.confirmed {
-  background: var(--badge-slate-background);
-  color: var(--badge-slate-foreground);
+  background: var(--badge-amber-background);
+  color: var(--badge-amber-foreground);
 }
 .state.in_progress {
   background: #fff0df;

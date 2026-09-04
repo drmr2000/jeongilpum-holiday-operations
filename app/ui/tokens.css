@@ -9,12 +9,12 @@
   --badge-neutral-foreground: #665e54;
   --badge-amber-background: #f8e9d7;
   --badge-amber-foreground: #7c4319;
-  --badge-slate-background: #e5edef;
-  --badge-slate-foreground: #3f5860;
-  --badge-green-background: #e4f4eb;
-  --badge-green-foreground: #277153;
   --badge-wine-background: #f5e2df;
   --badge-wine-foreground: #7b2422;
+  --badge-green-background: #e4f4eb;
+  --badge-green-foreground: #277153;
+  --badge-green-strong-background: #277153;
+  --badge-green-strong-foreground: #f7f3ea;
   --badge-danger-background: #9d3029;
   --badge-danger-foreground: #ffffff;
   --green: var(--badge-green-foreground);

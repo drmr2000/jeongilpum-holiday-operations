@@ -115,9 +115,10 @@
 .app-nav {
   align-items: center;
   position: fixed;
-  top: 50%;
+  inset-block: 0;
   right: 14px;
-  transform: translateY(-50%);
+  height: fit-content;
+  margin-block: auto;
   z-index: 70;
   display: flex;
   flex-direction: column;

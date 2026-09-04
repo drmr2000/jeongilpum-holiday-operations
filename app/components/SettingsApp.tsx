@@ -132,7 +132,7 @@ const VISIBILITY_LABELS: Record<VisibilityStatus, string> = {
 
 const VISIBILITY_TONES: Record<VisibilityStatus, import("../ui").BadgeTone> = {
   visible: "green",
-  hidden: "slate",
+  hidden: "neutral",
 };
 
 function numericText(value: string) {

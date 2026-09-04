@@ -33,7 +33,7 @@ const WORK_STATUS_TONES: Record<WorkStatus, BadgeTone> = {
   confirmed: "amber",
   in_progress: "wine",
   ready: "green",
-  completed: "slate",
+  completed: "green-strong",
   cancelled: "danger",
 };
 
