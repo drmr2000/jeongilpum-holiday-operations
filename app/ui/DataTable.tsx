@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, ChevronsUpDown, GripVertical } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
-import type { DragEvent, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
 
 export type DataTableSortValue = string | number | Date | null | undefined;
 
@@ -24,7 +24,32 @@ export type DataTableGroup<Row> = {
   rows: Row[];
 };
 
-export type DataTableProps<Row> = {
+export type DataTableHierarchyColumn = {
+  id: string;
+  content: ReactNode;
+  colSpan?: number;
+  align?: "left" | "center" | "right";
+  rowHeader?: boolean;
+  multiline?: boolean;
+  cellLayout?: "inline" | "stacked";
+  className?: string;
+};
+
+export type DataTableHierarchyRow = {
+  id: string;
+  columns: DataTableHierarchyColumn[];
+  children?: DataTableHierarchyRow[];
+  expansion?: {
+    expanded: boolean;
+    onToggle: () => void;
+    label: ReactNode;
+    ariaLabel: string;
+  };
+  className?: string;
+  onRowClick?: () => void;
+};
+
+type DataTableFlatProps<Row> = {
   rows?: Row[];
   columns: DataTableColumn<Row>[];
   getRowId: (row: Row) => string;
@@ -47,10 +72,25 @@ export type DataTableProps<Row> = {
   ariaLabel?: string;
 };
 
+type DataTableHierarchyProps = {
+  hierarchyRows: DataTableHierarchyRow[];
+  columnWidths?: string[];
+  emptyMessage?: ReactNode;
+  ariaLabel?: string;
+};
+
+export type DataTableProps<Row> = DataTableFlatProps<Row> | DataTableHierarchyProps;
+
 type SortState = {
   columnId: string;
   direction: "asc" | "desc";
 } | null;
+
+type DataTableCellStyle = {
+  multiline?: boolean;
+  cellLayout?: "inline" | "stacked";
+  className?: string;
+};
 
 function compareValues(left: DataTableSortValue, right: DataTableSortValue) {
   if (left === right) return 0;
@@ -61,7 +101,16 @@ function compareValues(left: DataTableSortValue, right: DataTableSortValue) {
   return String(left).localeCompare(String(right), "ko-KR", { numeric: true, sensitivity: "base" });
 }
 
-export function DataTable<Row>({
+function dataTableCellClassName({ multiline, cellLayout, className }: DataTableCellStyle) {
+  return [
+    "ui-data-table__cell",
+    multiline ? "ui-data-table__cell--multiline" : "",
+    `ui-data-table__cell--${cellLayout ?? "inline"}`,
+    className ?? "",
+  ].filter(Boolean).join(" ");
+}
+
+function FlatDataTable<Row>({
   rows,
   columns,
   getRowId,
@@ -82,7 +131,7 @@ export function DataTable<Row>({
   initialSort,
   emptyMessage = "표시할 항목이 없습니다.",
   ariaLabel,
-}: DataTableProps<Row>) {
+}: DataTableFlatProps<Row>) {
   const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState>(
     initialSort ? { columnId: initialSort.columnId, direction: initialSort.direction ?? "asc" } : null,
@@ -186,11 +235,7 @@ export function DataTable<Row>({
           </td>
         ) : null}
         {columns.map((column) => {
-          const className = [
-            "ui-data-table__cell",
-            column.multiline ? "ui-data-table__cell--multiline" : "",
-            `ui-data-table__cell--${column.cellLayout ?? "inline"}`,
-          ].filter(Boolean).join(" ");
+          const className = dataTableCellClassName(column);
           const style = { width: column.width, textAlign: column.align ?? "left" };
           return column.rowHeader ? (
             <th key={column.id} scope="row" className={className} style={style}>
@@ -268,4 +313,113 @@ export function DataTable<Row>({
       </table>
     </div>
   );
+}
+
+function hierarchyColumnCount(rows: DataTableHierarchyRow[]): number {
+  return rows.reduce((maximum, row) => Math.max(
+    maximum,
+    row.columns.reduce((count, column) => count + (column.colSpan ?? 1), 0) + (row.expansion ? 1 : 0),
+    hierarchyColumnCount(row.children ?? []),
+  ), 0);
+}
+
+function HierarchyDataTable({
+  hierarchyRows,
+  columnWidths,
+  emptyMessage = "표시할 항목이 없습니다.",
+  ariaLabel,
+}: DataTableHierarchyProps) {
+  const columnCount = Math.max(hierarchyColumnCount(hierarchyRows), columnWidths?.length ?? 0, 1);
+
+  const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, row: DataTableHierarchyRow) => {
+    if (!row.onRowClick || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    row.onRowClick();
+  };
+
+  const renderRows = (rows: DataTableHierarchyRow[], depth: number): ReactNode[] => rows.flatMap((row) => {
+    const clickable = Boolean(row.onRowClick);
+    const style = {
+      "--ui-data-table-hierarchy-indent": `${depth * 20}px`,
+    } as CSSProperties;
+    const cells = row.columns.map((column) => {
+      const Cell = column.rowHeader ? "th" : "td";
+      return (
+        <Cell
+          key={column.id}
+          className={dataTableCellClassName(column)}
+          colSpan={column.colSpan}
+          scope={column.rowHeader ? "row" : undefined}
+          style={{ textAlign: column.align ?? "left" }}
+        >
+          {column.content}
+        </Cell>
+      );
+    });
+
+    if (row.expansion) {
+      cells.push(
+        <td key={`${row.id}-toggle`} className="ui-data-table__hierarchy-toggle-cell">
+          <button
+            type="button"
+            className="ui-data-table__hierarchy-toggle"
+            aria-expanded={row.expansion.expanded}
+            aria-label={row.expansion.ariaLabel}
+            onClick={(event) => {
+              event.stopPropagation();
+              row.expansion?.onToggle();
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <span>{row.expansion.label}</span>
+            <ChevronDown className={row.expansion.expanded ? "" : "ui-data-table__hierarchy-toggle-icon--collapsed"} size={15} aria-hidden="true" />
+          </button>
+        </td>,
+      );
+    }
+
+    const rendered = [
+      <tr
+        key={row.id}
+        className={[
+          "ui-data-table__row--hierarchy",
+          clickable ? "ui-data-table__row--clickable" : "",
+          row.className ?? "",
+        ].filter(Boolean).join(" ")}
+        tabIndex={clickable ? 0 : undefined}
+        style={style}
+        onClick={clickable ? row.onRowClick : undefined}
+        onKeyDown={(event) => onRowKeyDown(event, row)}
+      >
+        {cells}
+      </tr>,
+    ];
+
+    if (!row.children?.length || (row.expansion && !row.expansion.expanded)) return rendered;
+    return [...rendered, ...renderRows(row.children, depth + 1)];
+  });
+
+  return (
+    <div className="ui-data-table__scroll">
+      <table className="ui-data-table" aria-label={ariaLabel}>
+        <colgroup>
+          {Array.from({ length: columnCount }, (_, index) => (
+            <col key={index} style={columnWidths?.[index] ? { width: columnWidths[index] } : undefined} />
+          ))}
+        </colgroup>
+        <tbody>
+          {hierarchyRows.length ? renderRows(hierarchyRows, 0) : (
+            <tr>
+              <td className="ui-data-table__empty" colSpan={columnCount}>{emptyMessage}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function DataTable<Row>(props: DataTableProps<Row>) {
+  if ("hierarchyRows" in props) return <HierarchyDataTable {...props} />;
+  return <FlatDataTable {...props} />;
 }

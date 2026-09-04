@@ -359,6 +359,13 @@
   content: none;
 }
 
+.ui-data-table__cell--stacked > small,
+.ui-data-table__cell--muted {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-body);
+}
+
 .ui-data-table tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -389,6 +396,45 @@
 .ui-data-table__row--clickable:focus {
   outline: 0;
   box-shadow: inset 3px 0 0 var(--wine);
+}
+
+.ui-data-table__row--hierarchy > :first-child {
+  padding-left: calc(10px + var(--ui-data-table-hierarchy-indent, 0px));
+}
+
+.ui-data-table__hierarchy-toggle-cell {
+  width: 1%;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.ui-data-table__hierarchy-toggle {
+  min-height: 32px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-body);
+}
+
+.ui-data-table__hierarchy-toggle:hover,
+.ui-data-table__hierarchy-toggle:focus-visible {
+  background: #eee9e0;
+  color: var(--wine);
+  outline: 0;
+}
+
+.ui-data-table__hierarchy-toggle-icon--collapsed {
+  transform: rotate(-90deg);
 }
 
 .ui-data-table__selection {

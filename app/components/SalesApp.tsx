@@ -15,6 +15,7 @@ import {
   Toolbar,
   useResource,
   type DataTableColumn,
+  type DataTableHierarchyRow,
 } from "../ui";
 import {
   PIPELINE_WORK_STATUSES,
@@ -720,6 +721,104 @@ export default function SalesApp() {
       width: "176px",
     },
   ];
+  const customerRows: DataTableHierarchyRow[] = (customerData?.customers ?? []).map((customer) => {
+    const customerOpen = expandedCustomers.includes(customer.id);
+    return {
+      id: customer.id,
+      columns: [
+        {
+          id: "customer",
+          content: <><b>{customer.buyerName}</b><small>{customer.buyerPhone}</small></>,
+          colSpan: 2,
+          cellLayout: "stacked",
+        },
+        {
+          id: "orderCount",
+          content: `주문 ${customer.orders.length}건`,
+          align: "right",
+          className: "ui-data-table__cell--muted",
+        },
+        {
+          id: "balance",
+          content: <strong className={customer.balance > 0 ? "sales-work-table__balance" : undefined}>{customer.balance > 0 ? `주문 ${won(customer.balance)}` : "주문 없음"}</strong>,
+          align: "right",
+        },
+      ],
+      expansion: {
+        expanded: customerOpen,
+        onToggle: () => toggleCustomer(customer.id),
+        label: customerOpen ? "접기" : "펼치기",
+        ariaLabel: `${customer.buyerName} 주문 ${customerOpen ? "접기" : "펼치기"}`,
+      },
+      children: customer.orders.map((order) => {
+        const orderOpen = expandedOrders.includes(order.id);
+        return {
+          id: order.id,
+          columns: [
+            {
+              id: "orderNo",
+              content: <b>{order.orderNo}</b>,
+            },
+            {
+              id: "payment",
+              content: `${PAYMENT_STATUS_LABELS[order.paymentStatus]} · ${won(order.paidAmount)} / ${won(order.totalAmount)}`,
+              className: "ui-data-table__cell--muted",
+            },
+            {
+              id: "actions",
+              content: <div className="sales-work-table__order-actions">
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder({ order, buyerName: customer.buyerName, buyerPhone: customer.buyerPhone })}>주문 수정</Button>
+                <Button size="sm" variant="ghost" onClick={() => setNewWorkOrder(order)}>작업 추가</Button>
+                <Button size="sm" variant="ghost" onClick={() => setPaymentOrder(order)}>결제 변경</Button>
+              </div>,
+              colSpan: 2,
+              align: "right",
+            },
+          ],
+          expansion: {
+            expanded: orderOpen,
+            onToggle: () => toggleOrder(order.id),
+            label: orderOpen ? "작업 접기" : "작업 펼치기",
+            ariaLabel: `${order.orderNo} 작업 ${orderOpen ? "접기" : "펼치기"}`,
+          },
+          children: order.workItems.length ? order.workItems.map((item) => ({
+            id: item.id,
+            columns: [
+              {
+                id: "dueAt",
+                content: `${item.dueAt.slice(0, 10)} · ${item.deliveryMethod === "delivery" ? "발송" : item.dueAt.slice(11, 16)}`,
+                className: "ui-data-table__cell--muted",
+              },
+              {
+                id: "product",
+                content: <b>{item.productName} × {item.quantity}</b>,
+                colSpan: 2,
+                multiline: true,
+              },
+              {
+                id: "delivery",
+                content: DELIVERY_LABELS[item.deliveryMethod],
+                className: "ui-data-table__cell--muted",
+              },
+              {
+                id: "status",
+                content: <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
+              },
+            ],
+            onRowClick: () => setSelectedWorkItem(item),
+          })) : [{
+            id: `${order.id}-empty`,
+            columns: [{
+              id: "empty",
+              content: "등록된 작업 항목이 없습니다.",
+              colSpan: 5,
+              className: "ui-data-table__empty",
+            }],
+          }],
+        };
+      }),
+    };
+  });
 
   return (
     <div className="sales-work-table">
@@ -851,17 +950,14 @@ export default function SalesApp() {
             />
           </section>
         ) : (
-          <CustomerTable
-            customers={customerData?.customers ?? []}
-            expandedCustomers={expandedCustomers}
-            expandedOrders={expandedOrders}
-            onToggleCustomer={toggleCustomer}
-            onToggleOrder={toggleOrder}
-            onOpenWorkItem={setSelectedWorkItem}
-            onOpenPayment={setPaymentOrder}
-            onCreateWork={setNewWorkOrder}
-            onEditOrder={(order, buyerName, buyerPhone) => setSelectedOrder({ order, buyerName, buyerPhone })}
-          />
+          <section className="sales-work-table__section" aria-label="주문 목록">
+            <DataTable
+              ariaLabel="판매장 주문 목록"
+              hierarchyRows={customerRows}
+              columnWidths={["32%", "20%", "16%", "16%", "104px"]}
+              emptyMessage="조건에 맞는 주문자와 주문이 없습니다."
+            />
+          </section>
         )}
       </main>
 
@@ -1005,79 +1101,6 @@ function BulkActions({
         <Button size="sm" variant="danger" onClick={onDelete}>삭제</Button>
       </div>
     </div>
-  );
-}
-
-function CustomerTable({
-  customers,
-  expandedCustomers,
-  expandedOrders,
-  onToggleCustomer,
-  onToggleOrder,
-  onOpenWorkItem,
-  onOpenPayment,
-  onCreateWork,
-  onEditOrder,
-}: {
-  customers: Customer[];
-  expandedCustomers: string[];
-  expandedOrders: string[];
-  onToggleCustomer: (id: string) => void;
-  onToggleOrder: (id: string) => void;
-  onOpenWorkItem: (item: WorkItem) => void;
-  onOpenPayment: (order: CustomerOrder) => void;
-  onCreateWork: (order: CustomerOrder) => void;
-  onEditOrder: (order: CustomerOrder, buyerName: string, buyerPhone: string) => void;
-}) {
-  if (!customers.length) return <section className="sales-work-table__customer-table"><p className="sales-work-table__empty">조건에 맞는 주문자와 주문이 없습니다.</p></section>;
-
-  return (
-    <section className="sales-work-table__customer-table" aria-label="주문 목록">
-      {customers.map((customer) => {
-        const customerOpen = expandedCustomers.includes(customer.id);
-        return (
-          <article key={customer.id}>
-            <button className="sales-work-table__customer-row" type="button" onClick={() => onToggleCustomer(customer.id)} aria-expanded={customerOpen}>
-              <span><b>{customer.buyerName}</b><small>{customer.buyerPhone}</small></span>
-              <span>주문 {customer.orders.length}건</span>
-              <strong className={customer.balance > 0 ? "sales-work-table__balance" : undefined}>{customer.balance > 0 ? `주문 ${won(customer.balance)}` : "주문 없음"}</strong>
-              <span>{customerOpen ? "접기" : "펼치기"}</span>
-            </button>
-            {customerOpen ? (
-              <div className="sales-work-table__customer-orders">
-                {customer.orders.map((order) => {
-                  const orderOpen = expandedOrders.includes(order.id);
-                  return (
-                    <section key={order.id}>
-                      <header>
-                        <button type="button" onClick={() => onToggleOrder(order.id)} aria-expanded={orderOpen}>
-                          <b>{order.orderNo}</b>
-                          <span>{PAYMENT_STATUS_LABELS[order.paymentStatus]} · {won(order.paidAmount)} / {won(order.totalAmount)}</span>
-                          <span>{orderOpen ? "작업 접기" : "작업 펼치기"}</span>
-                        </button>
-                        <Button size="sm" variant="ghost" onClick={() => onEditOrder(order, customer.buyerName, customer.buyerPhone)}>주문 수정</Button>
-                        <Button size="sm" variant="ghost" onClick={() => onCreateWork(order)}>작업 추가</Button>
-                        <Button size="sm" variant="ghost" onClick={() => onOpenPayment(order)}>결제 변경</Button>
-                      </header>
-                      {orderOpen ? order.workItems.length ? order.workItems.map((item) => (
-                        <div className="sales-work-table__nested-work" key={item.id}>
-                          <button type="button" onClick={() => onOpenWorkItem(item)}>
-                            <span>{item.dueAt.slice(0, 10)} · {item.deliveryMethod === "delivery" ? "발송" : item.dueAt.slice(11, 16)}</span>
-                            <b>{item.productName} × {item.quantity}</b>
-                            <span>{DELIVERY_LABELS[item.deliveryMethod]}</span>
-                            <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>
-                          </button>
-                        </div>
-                      )) : <p className="sales-work-table__empty">등록된 작업 항목이 없습니다.</p> : null}
-                    </section>
-                  );
-                })}
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
-    </section>
   );
 }
 

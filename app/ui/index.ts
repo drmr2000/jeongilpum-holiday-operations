@@ -3,6 +3,8 @@ export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from ".
 export {
   DataTable,
   type DataTableColumn,
+  type DataTableHierarchyColumn,
+  type DataTableHierarchyRow,
   type DataTableProps,
   type DataTableSortValue,
 } from "./DataTable";
