@@ -22,6 +22,7 @@ import {
   WORK_STATUS_LABELS,
   WORK_STATUS_OPTIONS,
   paymentStatusTone,
+  workStatusLabel,
   workStatusTone,
   type PaymentStatus,
   type PipelineWorkStatus,
@@ -648,24 +649,16 @@ export default function SalesApp() {
             variant="ghost"
             onClick={(event) => {
               event.stopPropagation();
-              if (window.confirm("주문을 확인 처리하시겠습니까?")) {
-                void updateWork(item, { workStatus: "confirmed" }, "주문을 확인했습니다.");
-              }
+              void updateWork(
+                item,
+                { workStatus: "confirmed" },
+                `${workStatusLabel("confirmed")} 상태로 변경했습니다.`,
+              );
             }}
           >
-            주문 확인
+            {workStatusLabel("confirmed")}
           </Button>
         ) : null}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={(event) => {
-            event.stopPropagation();
-            setDuplicateRequest({ kind: "item", item });
-          }}
-        >
-          복제
-        </Button>
       </div>,
       width: "268px",
     },
@@ -804,6 +797,10 @@ export default function SalesApp() {
           onClose={() => setSelectedWorkItem(null)}
           onSave={saveWorkItem}
           onDelete={() => setDeleteSelection([{ id: selectedWorkItem.id, expectedVersion: selectedWorkItem.version }])}
+          onDuplicate={() => {
+            setSelectedWorkItem(null);
+            setDuplicateRequest({ kind: "item", item: selectedWorkItem });
+          }}
         />
       ) : null}
       {selectedOrder ? (
@@ -1005,11 +1002,13 @@ function WorkItemEditor({
   onClose,
   onSave,
   onDelete,
+  onDuplicate,
 }: {
   item: WorkItem;
   onClose: () => void;
   onSave: (item: WorkItem, draft: WorkDraft) => Promise<void>;
   onDelete: () => void;
+  onDuplicate: () => void;
 }) {
   const [draft, setDraft] = useState(() => draftFor(item));
   const [saving, setSaving] = useState(false);
@@ -1067,6 +1066,7 @@ function WorkItemEditor({
       onClose={onClose}
       footer={<>
         <Button variant="ghost" style={{ marginRight: "auto", borderColor: "#a42f28", color: "#a42f28" }} onClick={onDelete}>삭제</Button>
+        <Button variant="ghost" onClick={onDuplicate}>복제</Button>
         <Button variant="ghost" onClick={onClose}>닫기</Button>
         <Button disabled={saving} onClick={() => (document.getElementById("sales-work-item-editor") as HTMLFormElement | null)?.requestSubmit()}>{saving ? "저장 중" : "저장"}</Button>
       </>}
