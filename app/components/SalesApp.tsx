@@ -17,13 +17,13 @@ import {
   Toolbar,
   useResource,
   type DataTableColumn,
-  type DataTableHierarchyRow,
 } from "../ui";
 import {
   PIPELINE_WORK_STATUSES,
   PAYMENT_STATUS_LABELS,
   WORK_STATUS_LABELS,
   WORK_STATUS_OPTIONS,
+  paymentRequiresCollection,
   paymentStatusTone,
   workStatusLabel,
   workStatusTone,
@@ -31,7 +31,10 @@ import {
   type PipelineWorkStatus,
   type WorkStatus,
 } from "../lib/work-status";
-import WorkItemHistory, { type WorkItemHistoryEvent } from "./WorkItemHistory";
+import WorkItemHistory, {
+  formatWorkItemDateTime,
+  type WorkItemHistoryEvent,
+} from "./WorkItemHistory";
 import "../sales/work-table.css";
 
 type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
@@ -86,12 +89,18 @@ type WorkItemHistoryResponse = {
 type CustomerOrder = {
   id: string;
   orderNo: string;
+  createdAt: string;
   paymentStatus: PaymentStatus;
   paidAmount: number;
   totalAmount: number;
   balance: number;
   version: number;
   workItems: WorkItem[];
+};
+
+type CustomerOrderRow = CustomerOrder & {
+  buyerName: string;
+  buyerPhone: string;
 };
 
 type Customer = {
@@ -186,23 +195,17 @@ function todayInSeoul() {
 
 function workUrl({
   view,
-  workStatus,
-  deliveryMethod,
   dateFrom,
   dateTo,
   query,
 }: {
   view: Tab;
-  workStatus: string;
-  deliveryMethod: string;
   dateFrom: string;
   dateTo: string;
   query: string;
 }) {
   const params = new URLSearchParams();
   if (view === "customers") params.set("view", "customers");
-  if (workStatus) params.set("workStatus", workStatus);
-  if (deliveryMethod) params.set("deliveryMethod", deliveryMethod);
   if (dateFrom) params.set("dateFrom", dateFrom);
   if (dateTo) params.set("dateTo", dateTo);
   if (query.trim()) params.set("q", query.trim());
@@ -271,6 +274,14 @@ function workItemUrgencyClass(item: WorkItem) {
     : "sales-work-table__row--soon";
 }
 
+function outstandingPaymentRowClass(item: { paymentStatus: PaymentStatus }) {
+  return paymentRequiresCollection(item.paymentStatus) ? "sales-work-table__row--payment-due" : undefined;
+}
+
+function workItemRowClass(item: WorkItem) {
+  return [workItemUrgencyClass(item), outstandingPaymentRowClass(item)].filter(Boolean).join(" ") || undefined;
+}
+
 function draftFor(item: WorkItem): WorkDraft {
   return {
     productId: item.productId,
@@ -304,11 +315,13 @@ export default function SalesApp() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [workStatus, setWorkStatus] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
+  const [outstandingOnly, setOutstandingOnly] = useState(false);
   const [workDateFrom, setWorkDateFrom] = useState(today);
   const [workDateTo, setWorkDateTo] = useState(today);
   const [customerDateFrom, setCustomerDateFrom] = useState("");
   const [customerDateTo, setCustomerDateTo] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [selectedWorkItem, setSelectedWorkItem] = useState<WorkItem | null>(null);
   const [newWorkOrder, setNewWorkOrder] = useState<CustomerOrder | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<CustomerOrder | null>(null);
@@ -318,8 +331,6 @@ export default function SalesApp() {
   const [deleteOrder, setDeleteOrder] = useState<OrderSelection | null>(null);
   const [duplicateRequest, setDuplicateRequest] = useState<DuplicateRequest | null>(null);
   const [notice, setNotice] = useState("");
-  const [expandedCustomers, setExpandedCustomers] = useState<string[]>([]);
-  const [expandedOrders, setExpandedOrders] = useState<string[]>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -330,8 +341,6 @@ export default function SalesApp() {
   const currentDateTo = tab === "work" ? workDateTo : customerDateTo;
   const workResourceUrl = workUrl({
     view: "work",
-    workStatus,
-    deliveryMethod,
     dateFrom: workDateFrom,
     dateTo: workDateTo,
     query: debouncedQuery,
@@ -339,8 +348,6 @@ export default function SalesApp() {
   const customerResourceUrl = tab === "customers"
     ? workUrl({
       view: "customers",
-      workStatus,
-      deliveryMethod,
       dateFrom: customerDateFrom,
       dateTo: customerDateTo,
       query: debouncedQuery,
@@ -358,7 +365,26 @@ export default function SalesApp() {
   } = useResource<CustomerResponse>(customerResourceUrl, 3000);
 
   const workItems = workData?.workItems ?? [];
-  const selectedWorkItems = workItems.filter((item) => selectedIds.includes(item.id));
+  const matchesWorkFilters = (item: WorkItem) => (
+    (!workStatus || item.workStatus === workStatus)
+    && (!deliveryMethod || item.deliveryMethod === deliveryMethod)
+  );
+  const filteredWorkItems = workItems.filter((item) => (
+    matchesWorkFilters(item)
+    && (!outstandingOnly || paymentRequiresCollection(item.paymentStatus))
+  ));
+  const customerOrders = (customerData?.customers ?? []).flatMap((customer) => (
+    customer.orders.map((order): CustomerOrderRow => ({
+      ...order,
+      buyerName: customer.buyerName,
+      buyerPhone: customer.buyerPhone,
+    }))
+  )).filter((order) => (
+    (!outstandingOnly || paymentRequiresCollection(order.paymentStatus))
+    && (!workStatus && !deliveryMethod || order.workItems.some(matchesWorkFilters))
+  ));
+  const selectedWorkItems = filteredWorkItems.filter((item) => selectedIds.includes(item.id));
+  const selectedCustomerOrders = customerOrders.filter((order) => selectedOrderIds.includes(order.id));
   const error = tab === "work" ? workError : customerError;
   const dashboardTotals = Object.values(workData?.dashboard ?? {}).reduce<Record<DeliveryMethod, number>>(
     (totals, statusTotals) => ({
@@ -625,18 +651,6 @@ export default function SalesApp() {
     await runBulk({ action: "duplicate" }, "선택한 작업 행을 복제했습니다.");
   };
 
-  const toggleCustomer = (id: string) => {
-    setExpandedCustomers((current) => current.includes(id)
-      ? current.filter((value) => value !== id)
-      : [...current, id]);
-  };
-
-  const toggleOrder = (id: string) => {
-    setExpandedOrders((current) => current.includes(id)
-      ? current.filter((value) => value !== id)
-      : [...current, id]);
-  };
-
   const columns: DataTableColumn<WorkItem>[] = [
     {
       id: "dueAt",
@@ -722,104 +736,67 @@ export default function SalesApp() {
       width: "96px",
     },
   ];
-  const customerRows: DataTableHierarchyRow[] = (customerData?.customers ?? []).map((customer) => {
-    const customerOpen = expandedCustomers.includes(customer.id);
-    return {
-      id: customer.id,
-      columns: [
-        {
-          id: "customer",
-          content: <><b>{customer.buyerName}</b><small>{customer.buyerPhone}</small></>,
-          colSpan: 2,
-          cellLayout: "stacked",
-        },
-        {
-          id: "orderCount",
-          content: `주문 ${customer.orders.length}건`,
-          align: "right",
-          className: "ui-data-table__cell--muted",
-        },
-        {
-          id: "balance",
-          content: <strong className={customer.balance > 0 ? "sales-work-table__balance" : undefined}>{customer.balance > 0 ? `주문 ${won(customer.balance)}` : "주문 없음"}</strong>,
-          align: "right",
-        },
-      ],
-      expansion: {
-        expanded: customerOpen,
-        onToggle: () => toggleCustomer(customer.id),
-        label: customerOpen ? "접기" : "펼치기",
-        ariaLabel: `${customer.buyerName} 주문 ${customerOpen ? "접기" : "펼치기"}`,
-      },
-      children: customer.orders.map((order) => {
-        const orderOpen = expandedOrders.includes(order.id);
-        return {
-          id: order.id,
-          columns: [
-            {
-              id: "orderNo",
-              content: <b>{order.orderNo}</b>,
-            },
-            {
-              id: "payment",
-              content: `${PAYMENT_STATUS_LABELS[order.paymentStatus]} · ${won(order.paidAmount)} / ${won(order.totalAmount)}`,
-              className: "ui-data-table__cell--muted",
-            },
-            {
-              id: "actions",
-              content: <div className="sales-work-table__order-actions">
-                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder({ order, buyerName: customer.buyerName, buyerPhone: customer.buyerPhone })}>주문 수정</Button>
-                <Button size="sm" variant="ghost" onClick={() => setNewWorkOrder(order)}>작업 추가</Button>
-                <Button size="sm" variant="ghost" onClick={() => setPaymentOrder(order)}>결제 변경</Button>
-              </div>,
-              colSpan: 2,
-              align: "right",
-            },
-          ],
-          expansion: {
-            expanded: orderOpen,
-            onToggle: () => toggleOrder(order.id),
-            label: orderOpen ? "작업 접기" : "작업 펼치기",
-            ariaLabel: `${order.orderNo} 작업 ${orderOpen ? "접기" : "펼치기"}`,
-          },
-          children: order.workItems.length ? order.workItems.map((item) => ({
-            id: item.id,
-            columns: [
-              {
-                id: "dueAt",
-                content: `${item.dueAt.slice(0, 10)} · ${item.deliveryMethod === "delivery" ? "발송" : item.dueAt.slice(11, 16)}`,
-                className: "ui-data-table__cell--muted",
-              },
-              {
-                id: "product",
-                content: <b>{item.productName} × {item.quantity}</b>,
-                colSpan: 2,
-                multiline: true,
-              },
-              {
-                id: "delivery",
-                content: DELIVERY_LABELS[item.deliveryMethod],
-                className: "ui-data-table__cell--muted",
-              },
-              {
-                id: "status",
-                content: <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
-              },
-            ],
-            onRowClick: () => setSelectedWorkItem(item),
-          })) : [{
-            id: `${order.id}-empty`,
-            columns: [{
-              id: "empty",
-              content: "등록된 작업 항목이 없습니다.",
-              colSpan: 5,
-              className: "ui-data-table__empty",
-            }],
-          }],
-        };
-      }),
-    };
-  });
+  const orderColumns: DataTableColumn<CustomerOrderRow>[] = [
+    {
+      id: "createdAt",
+      header: "주문 일시",
+      cell: (order) => <time dateTime={order.createdAt}>{formatWorkItemDateTime(order.createdAt)}</time>,
+      sortValue: (order) => order.createdAt,
+      width: "174px",
+    },
+    {
+      id: "orderNo",
+      header: "주문번호",
+      cell: (order) => <b>{order.orderNo}</b>,
+      sortValue: (order) => order.orderNo,
+      width: "144px",
+    },
+    {
+      id: "customer",
+      header: "주문자",
+      cell: (order) => <><b>{order.buyerName}</b><small>{order.buyerPhone}</small></>,
+      sortValue: (order) => order.buyerName,
+      width: "156px",
+      rowHeader: true,
+      cellLayout: "stacked",
+    },
+    {
+      id: "workItems",
+      header: "작업",
+      cell: (order) => order.workItems.length ? (
+        <><b>{order.workItems.map((item) => `${item.productName} ${item.quantity}개`).join(", ")}</b><small>{order.workItems.length}개 작업</small></>
+      ) : <span>작업 미등록</span>,
+      sortValue: (order) => order.workItems.map((item) => item.productName).join(" "),
+      cellLayout: "stacked",
+      multiline: true,
+    },
+    {
+      id: "payment",
+      header: "결제",
+      cell: (order) => <Badge tone={paymentStatusTone(order.paymentStatus)}>{PAYMENT_STATUS_LABELS[order.paymentStatus]}</Badge>,
+      sortValue: (order) => order.paymentStatus,
+      width: "96px",
+    },
+    {
+      id: "amount",
+      header: "결제 금액",
+      cell: (order) => <><b>{won(order.paidAmount)} / {won(order.totalAmount)}</b><small className={order.balance > 0 ? "sales-work-table__balance" : undefined}>{order.balance > 0 ? `미수 ${won(order.balance)}` : "미수 없음"}</small></>,
+      sortValue: (order) => order.balance,
+      align: "right",
+      width: "168px",
+      cellLayout: "stacked",
+    },
+    {
+      id: "actions",
+      header: "처리",
+      cell: (order) => <div className="sales-work-table__order-actions">
+        <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); setSelectedOrder({ order, buyerName: order.buyerName, buyerPhone: order.buyerPhone }); }}>주문 수정</Button>
+        <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); setNewWorkOrder(order); }}>작업 추가</Button>
+        <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); setPaymentOrder(order); }}>결제 변경</Button>
+      </div>,
+      width: "268px",
+    },
+  ];
 
   return (
     <div className="sales-work-table">
@@ -832,10 +809,13 @@ export default function SalesApp() {
             <button
               type="button"
               className="sales-work-table__filter-button"
-              aria-pressed={!workStatus && !deliveryMethod}
+              aria-pressed={!workStatus && !deliveryMethod && !outstandingOnly}
               onClick={() => {
                 setWorkStatus("");
                 setDeliveryMethod("");
+                setOutstandingOnly(false);
+                setSelectedIds([]);
+                setSelectedOrderIds([]);
               }}
             >
               <span>전체</span>
@@ -847,12 +827,28 @@ export default function SalesApp() {
                 type="button"
                 className="sales-work-table__filter-button"
                 aria-pressed={deliveryMethod === method}
-                onClick={() => setDeliveryMethod(deliveryMethod === method ? "" : method)}
+                onClick={() => {
+                  setDeliveryMethod(deliveryMethod === method ? "" : method);
+                  setSelectedIds([]);
+                  setSelectedOrderIds([]);
+                }}
               >
                 <span>{DELIVERY_LABELS[method]}</span>
                 <b>{dashboardTotals[method]}</b>
               </button>
             ))}
+            <button
+              type="button"
+              className="sales-work-table__filter-button"
+              aria-pressed={outstandingOnly}
+              onClick={() => {
+                setOutstandingOnly((current) => !current);
+                setSelectedIds([]);
+                setSelectedOrderIds([]);
+              }}
+            >
+              <span>미수 결제</span>
+            </button>
           </div>
           <span className="sales-work-table__filter-divider" aria-hidden="true" />
           <div className="sales-work-table__filter-group">
@@ -862,7 +858,11 @@ export default function SalesApp() {
                 type="button"
                 className="sales-work-table__filter-button"
                 aria-pressed={workStatus === status}
-                onClick={() => setWorkStatus(workStatus === status ? "" : status)}
+                onClick={() => {
+                  setWorkStatus(workStatus === status ? "" : status);
+                  setSelectedIds([]);
+                  setSelectedOrderIds([]);
+                }}
               >
                 <span>{WORK_STATUS_LABELS[status]}</span>
                 <b>{stageTotals[status]}</b>
@@ -877,10 +877,11 @@ export default function SalesApp() {
           onValueChange={(value) => {
             setTab(value as Tab);
             setSelectedIds([]);
+            setSelectedOrderIds([]);
           }}
           items={[
-            { id: "work", label: "작업", count: workItems.length },
-            { id: "customers", label: "주문", count: customerData?.customers.length },
+            { id: "work", label: "작업", count: filteredWorkItems.length },
+            { id: "customers", label: "주문", count: customerOrders.length },
           ]}
         />
 
@@ -892,13 +893,21 @@ export default function SalesApp() {
             label: "작업 및 주문 검색",
           }}
           filters={<>
-            <FieldSelect id="sales-work-status-filter" label={<span className="sr-only">작업 상태</span>} value={workStatus} onChange={(event) => setWorkStatus(event.target.value)}>
+            <FieldSelect id="sales-work-status-filter" label={<span className="sr-only">작업 상태</span>} value={workStatus} onChange={(event) => {
+              setWorkStatus(event.target.value);
+              setSelectedIds([]);
+              setSelectedOrderIds([]);
+            }}>
               <option value="">모든 작업 상태</option>
               {WORK_STATUS_OPTIONS.map((status) => (
                 <option key={status} value={status}>{WORK_STATUS_LABELS[status]}</option>
               ))}
             </FieldSelect>
-            <FieldSelect id="sales-delivery-method-filter" label={<span className="sr-only">수령방법</span>} value={deliveryMethod} onChange={(event) => setDeliveryMethod(event.target.value)}>
+            <FieldSelect id="sales-delivery-method-filter" label={<span className="sr-only">수령방법</span>} value={deliveryMethod} onChange={(event) => {
+              setDeliveryMethod(event.target.value);
+              setSelectedIds([]);
+              setSelectedOrderIds([]);
+            }}>
               <option value="">모든 수령방법</option>
               {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </FieldSelect>
@@ -914,15 +923,17 @@ export default function SalesApp() {
                 if (tab === "work") {
                   setWorkDateFrom(dateFrom);
                   setWorkDateTo(dateTo ?? "");
+                  setSelectedIds([]);
                   return;
                 }
                 setCustomerDateFrom(dateFrom);
                 setCustomerDateTo(dateTo ?? "");
+                setSelectedOrderIds([]);
               }}
             />
           </>}
           actions={<Button size="sm" onClick={() => setNewOrderOpen(true)}>새 주문</Button>}
-          selectionCount={tab === "work" ? selectedWorkItems.length : undefined}
+          selectionCount={tab === "work" ? selectedWorkItems.length : selectedCustomerOrders.length}
         >
           {tab === "work" && selectedWorkItems.length ? (
             <BulkActions
@@ -939,10 +950,10 @@ export default function SalesApp() {
           <section className="sales-work-table__section" aria-label="작업 목록">
             <DataTable
               ariaLabel="판매장 작업 목록"
-              rows={workItems}
+              rows={filteredWorkItems}
               columns={columns}
               getRowId={(item) => item.id}
-              rowClassName={workItemUrgencyClass}
+              rowClassName={workItemRowClass}
               onRowClick={setSelectedWorkItem}
               selectedIds={selectedIds}
               onSelectedIdsChange={setSelectedIds}
@@ -953,9 +964,15 @@ export default function SalesApp() {
           <section className="sales-work-table__section" aria-label="주문 목록">
             <DataTable
               ariaLabel="판매장 주문 목록"
-              hierarchyRows={customerRows}
-              columnWidths={["32%", "20%", "16%", "16%", "104px"]}
-              emptyMessage="조건에 맞는 주문자와 주문이 없습니다."
+              rows={customerOrders}
+              columns={orderColumns}
+              getRowId={(order) => order.id}
+              rowClassName={outstandingPaymentRowClass}
+              onRowClick={(order) => setSelectedOrder({ order, buyerName: order.buyerName, buyerPhone: order.buyerPhone })}
+              selectedIds={selectedOrderIds}
+              onSelectedIdsChange={setSelectedOrderIds}
+              initialSort={{ columnId: "createdAt", direction: "desc" }}
+              emptyMessage="조건에 맞는 주문이 없습니다."
             />
           </section>
         )}

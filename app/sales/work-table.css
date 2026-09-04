@@ -147,6 +147,14 @@
   border-left: 1px solid var(--line);
 }
 
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--payment-due > td {
+  background: var(--badge-amber-background);
+}
+
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--payment-due > td:first-child {
+  box-shadow: inset 3px 0 0 var(--badge-amber-foreground);
+}
+
 .sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > td {
   background: var(--badge-wine-background);
 }

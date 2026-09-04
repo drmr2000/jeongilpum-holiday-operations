@@ -11,6 +11,10 @@ export function historyLabel(type: string) {
   return workItemEventLabel(type);
 }
 
+export function formatWorkItemDateTime(value: string) {
+  return new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+}
+
 export default function WorkItemHistory({
   events,
   loading = false,
@@ -34,7 +38,7 @@ export default function WorkItemHistory({
           {events.map((event) => (
             <li key={event.id}>
               <strong>{labelForType(event.type)}</strong>
-              <time>{new Date(event.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time>
+              <time>{formatWorkItemDateTime(event.createdAt)}</time>
             </li>
           ))}
         </ol>

@@ -83,3 +83,7 @@ export function workStatusTone(status: WorkStatus): BadgeTone {
 export function paymentStatusTone(status: PaymentStatus): BadgeTone {
   return PAYMENT_STATUS_TONES[status];
 }
+
+export function paymentRequiresCollection(status: PaymentStatus) {
+  return status === "unpaid" || status === "partial";
+}

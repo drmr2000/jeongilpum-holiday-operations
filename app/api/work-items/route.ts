@@ -281,6 +281,7 @@ function customerRecords(orderRows: CustomerOrderRow[], workItemRows: WorkItemRo
     orders: Map<string, {
       id: string;
       orderNo: string;
+      createdAt: string;
       paymentStatus: "unpaid" | "partial" | "paid";
       paidAmount: number;
       totalAmount: number;
@@ -307,6 +308,7 @@ function customerRecords(orderRows: CustomerOrderRow[], workItemRows: WorkItemRo
     const order = {
       id: row.id,
       orderNo: row.order_no,
+      createdAt: row.created_at,
       paymentStatus: row.payment_status,
       paidAmount: row.paid_amount,
       totalAmount: row.total_amount,
@@ -351,8 +353,24 @@ function queryFilters(params: URLSearchParams) {
     throw new RequestError("정렬 기준을 확인해주세요.");
   }
 
-  const predicates = ["1=1"];
-  const values: string[] = [];
+  const dashboardPredicates = ["1=1"];
+  const dashboardValues: string[] = [];
+  if (dateFrom) {
+    dashboardPredicates.push("substr(w.due_at,1,10)>=?");
+    dashboardValues.push(dateFrom);
+  }
+  if (dateTo) {
+    dashboardPredicates.push("substr(w.due_at,1,10)<=?");
+    dashboardValues.push(dateTo);
+  }
+  if (query) {
+    const like = `%${query}%`;
+    dashboardPredicates.push("(o.buyer_name LIKE ? OR o.buyer_phone LIKE ? OR w.recipient_name LIKE ? OR w.recipient_phone LIKE ? OR o.order_no LIKE ? OR w.product_name_snapshot LIKE ?)");
+    dashboardValues.push(like, like, like, like, like, like);
+  }
+
+  const predicates = [...dashboardPredicates];
+  const values = [...dashboardValues];
   if (workStatus) {
     predicates.push("w.work_status=?");
     values.push(workStatus);
@@ -360,19 +378,6 @@ function queryFilters(params: URLSearchParams) {
   if (deliveryMethod) {
     predicates.push("w.delivery_method=?");
     values.push(deliveryMethod);
-  }
-  if (dateFrom) {
-    predicates.push("substr(w.due_at,1,10)>=?");
-    values.push(dateFrom);
-  }
-  if (dateTo) {
-    predicates.push("substr(w.due_at,1,10)<=?");
-    values.push(dateTo);
-  }
-  if (query) {
-    const like = `%${query}%`;
-    predicates.push("(o.buyer_name LIKE ? OR o.buyer_phone LIKE ? OR w.recipient_name LIKE ? OR w.recipient_phone LIKE ? OR o.order_no LIKE ? OR w.product_name_snapshot LIKE ?)");
-    values.push(like, like, like, like, like, like);
   }
 
   const orderBy = sort === "dueAtAsc"
@@ -400,6 +405,8 @@ function queryFilters(params: URLSearchParams) {
     view: view as WorkView,
     predicates,
     values,
+    dashboardPredicates,
+    dashboardValues,
     orderBy,
     workStatus,
     deliveryMethod,
@@ -538,6 +545,7 @@ export async function GET(request: Request) {
   try {
     const filters = queryFilters(new URL(request.url).searchParams);
     const where = filters.predicates.join(" AND ");
+    const dashboardWhere = filters.dashboardPredicates.join(" AND ");
     if (filters.view === "customers") {
       const customerFilters = customerOrderFilters(filters);
       const [orders, dashboardRows] = await Promise.all([
@@ -552,9 +560,9 @@ export async function GET(request: Request) {
           SELECT w.work_status,w.delivery_method,COUNT(*) AS count
           FROM work_items w
           JOIN orders o ON o.id=w.order_id
-          WHERE ${where}
+          WHERE ${dashboardWhere}
           GROUP BY w.work_status,w.delivery_method
-        `).bind(...filters.values).all<DashboardRow>(),
+        `).bind(...filters.dashboardValues).all<DashboardRow>(),
       ]);
       const orderIds = orders.results.map((order) => order.id);
       const workItems = orderIds.length
@@ -582,9 +590,9 @@ export async function GET(request: Request) {
         SELECT w.work_status,w.delivery_method,COUNT(*) AS count
         FROM work_items w
         JOIN orders o ON o.id=w.order_id
-        WHERE ${where}
+        WHERE ${dashboardWhere}
         GROUP BY w.work_status,w.delivery_method
-      `).bind(...filters.values).all<DashboardRow>(),
+      `).bind(...filters.dashboardValues).all<DashboardRow>(),
     ]);
     return Response.json(
       { workItems: items.results.map(workItemRecord), dashboard: createDashboard(dashboardRows.results) },
