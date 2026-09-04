@@ -336,7 +336,7 @@ function queryFilters(params: URLSearchParams) {
   const dateFrom = clean(params.get("dateFrom"));
   const dateTo = clean(params.get("dateTo"));
   const query = clean(params.get("q"));
-  const sort = clean(params.get("sort")) || "urgency";
+  const sort = clean(params.get("sort")) || "createdAtDesc";
 
   if (workStatus && !WORK_STATUSES.includes(workStatus as WorkStatus)) {
     throw new RequestError("작업 상태 필터를 확인해주세요.");
@@ -561,7 +561,7 @@ export async function GET(request: Request) {
         ? await runtimeEnv.DB.prepare(`
           ${WORK_ITEM_SELECT}
           WHERE w.order_id IN (${orderIds.map(() => "?").join(",")})
-          ORDER BY w.due_at ASC,w.created_at ASC,w.id ASC
+          ORDER BY w.created_at DESC,w.id DESC
         `).bind(...orderIds).all<WorkItemRow>()
         : { results: [] as WorkItemRow[] };
       return Response.json(
