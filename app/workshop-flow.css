@@ -247,47 +247,6 @@
   border-top: 4px solid var(--wine);
 }
 
-.production-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.production-board table {
-  width: 100%;
-  min-width: 42rem;
-  border-collapse: collapse;
-  font-size: var(--text-md);
-  font-weight: var(--weight-body);
-  line-height: var(--leading-normal);
-}
-
-.production-board th,
-.production-board td {
-  padding: 10px;
-  border-top: 1px solid var(--line);
-  text-align: center;
-}
-
-.production-board th {
-  font-weight: var(--weight-strong);
-}
-
-.production-board th:first-child,
-.production-board td:first-child {
-  text-align: left;
-}
-
-.production-board td button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--wine);
-  font-weight: var(--weight-strong);
-  text-align: left;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .production-board td b {
   color: var(--wine);
   font-size: var(--text-lg);

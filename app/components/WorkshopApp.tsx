@@ -69,6 +69,39 @@ type WorkshopResponse = {
 
 type WorkshopTab = "onsite" | "delivery";
 
+const productTotalColumns: DataTableColumn<ProductTotal>[] = [
+  {
+    id: "product",
+    header: "상품",
+    cell: (product) => product.productName,
+    rowHeader: true,
+  },
+  {
+    id: "total",
+    header: "전체",
+    cell: (product) => `${product.totalQuantity.toLocaleString()}개`,
+  },
+  {
+    id: "completed",
+    header: "완료",
+    cell: (product) => `${product.completedQuantity.toLocaleString()}개`,
+  },
+  {
+    id: "pending",
+    header: "남은 작업",
+    cell: (product) => `${product.pendingQuantity.toLocaleString()}개`,
+  },
+  {
+    id: "daily-limit",
+    header: "일일 한도",
+    cell: (product) => (
+      product.dailyLimit === null
+        ? "미설정"
+        : `${product.dailyLimit.toLocaleString()}개${product.totalQuantity > product.dailyLimit ? " 초과" : ""}`
+    ),
+  },
+];
+
 function todayInSeoul() {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Seoul",
@@ -375,7 +408,12 @@ export default function WorkshopApp() {
 
         <section className="workshop-product-summary" aria-label="상품별 작업량">
           {products.length ? (
-            <ProductTotalsTable products={products} />
+            <DataTable
+              ariaLabel="상품별 작업 수량"
+              rows={products}
+              columns={productTotalColumns}
+              getRowId={(product) => product.productId}
+            />
           ) : <p className="workshop-empty">집계할 상품 작업이 없습니다.</p>}
         </section>
 
@@ -490,40 +528,6 @@ export default function WorkshopApp() {
           <p>작업 시작 {startingItems.length}건 · 작업 완료 {completingItems.length}건</p>
         </section>
       </Modal>
-    </div>
-  );
-}
-
-function ProductTotalsTable({ products }: { products: ProductTotal[] }) {
-  return (
-    <div className="ui-data-table__scroll">
-      <table className="ui-data-table" aria-label="상품별 작업 수량">
-        <caption className="sr-only">상품별 작업량</caption>
-        <thead>
-          <tr>
-            <th scope="col">상품</th>
-            <th scope="col">전체</th>
-            <th scope="col">완료</th>
-            <th scope="col">남은 작업</th>
-            <th scope="col">일일 한도</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((product) => (
-            <tr key={product.productId}>
-              <th scope="row">{product.productName}</th>
-              <td>{product.totalQuantity.toLocaleString()}개</td>
-              <td>{product.completedQuantity.toLocaleString()}개</td>
-              <td>{product.pendingQuantity.toLocaleString()}개</td>
-              <td>
-                {product.dailyLimit === null
-                  ? "미설정"
-                  : `${product.dailyLimit.toLocaleString()}개${product.totalQuantity > product.dailyLimit ? " 초과" : ""}`}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

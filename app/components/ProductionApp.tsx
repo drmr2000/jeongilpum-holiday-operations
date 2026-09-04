@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import type { ProductionBatch, ProductionOverview, RecentProductionTrace } from "../lib/production-types";
 import { operationalDateFromSearch } from "../lib/operational-date";
-import { Button, FieldInput, FieldSelect, useResource } from "../ui";
+import type { DataTableColumn } from "../ui";
+import { Button, DataTable, FieldInput, FieldSelect, useResource } from "../ui";
 import OpsHeader from "./OpsHeader";
 import "../workshop-flow.css";
 
@@ -97,6 +98,40 @@ export default function ProductionApp() {
     } catch { /* 오류 영역 */ }
   }
 
+  const requirementColumns: DataTableColumn<ProductionOverview["requirements"][number]>[] = [
+    {
+      id: "component",
+      header: "부위",
+      cell: (item) => <><strong>{item.componentName}</strong><small>{item.componentCode}</small></>,
+      cellLayout: "stacked",
+    },
+    {
+      id: "source-products",
+      header: "연결 상품",
+      cell: (item) => item.sourceProducts.join(", "),
+      align: "center",
+      multiline: true,
+    },
+    {
+      id: "required",
+      header: "필요",
+      cell: (item) => item.requiredQuantity,
+      align: "center",
+    },
+    {
+      id: "available",
+      header: "가용",
+      cell: (item) => item.availableQuantity,
+      align: "center",
+    },
+    {
+      id: "additional",
+      header: "추가 생산",
+      cell: (item) => <b>{item.additionalNeeded}</b>,
+      align: "center",
+    },
+  ];
+
   return <div className="workshop-app production-app">
     <OpsHeader
       surface="workshop"
@@ -120,7 +155,23 @@ export default function ProductionApp() {
     <main className="workshop-main production-main">
       {error && <div className="package-message error" role="alert">{error}</div>}{notice && <div className="package-message" role="status">{notice}</div>}
       {overview.missingProducts.length > 0 && <section className="production-warning"><b>BOM 미등록 상품</b><p>아래 상품은 임의 계산하지 않습니다. product_components 등록 후 생산량에 포함됩니다.</p><ul>{overview.missingProducts.map((item) => <li key={item.productId}>{item.productName} × {item.quantity}</li>)}</ul></section>}
-      <section className="production-board requirement-board"><header><div><small>CUT REQUIREMENTS</small><h2>부위별 필요 생산량</h2></div><p>필요수량 − 가용 스킨팩 = 추가 생산량</p></header><div className="production-table-wrap"><table><thead><tr><th>부위</th><th>연결 상품</th><th>필요</th><th>가용</th><th>추가 생산</th></tr></thead><tbody>{overview.requirements.map((item) => <tr key={item.componentCode}><td><button onClick={() => { setSelectedCode(item.componentCode); setForm((current) => ({ ...current, productionTarget: String(item.additionalNeeded) })); }}>{item.componentName}</button><small>{item.componentCode}</small></td><td>{item.sourceProducts.join(", ")}</td><td>{item.requiredQuantity}</td><td>{item.availableQuantity}</td><td><b>{item.additionalNeeded}</b></td></tr>)}</tbody></table>{!overview.requirements.length && <div className="workshop-empty">선택 날짜에 BOM이 연결된 생산 수요가 없습니다.</div>}</div></section>
+      <section className="production-board requirement-board">
+        <header>
+          <div><small>CUT REQUIREMENTS</small><h2>부위별 필요 생산량</h2></div>
+          <p>필요수량 − 가용 스킨팩 = 추가 생산량</p>
+        </header>
+        <DataTable
+          ariaLabel="부위별 필요 생산량"
+          rows={overview.requirements}
+          columns={requirementColumns}
+          getRowId={(item) => item.componentCode}
+          onRowClick={(item) => {
+            setSelectedCode(item.componentCode);
+            setForm((current) => ({ ...current, productionTarget: String(item.additionalNeeded) }));
+          }}
+          emptyMessage="선택 날짜에 BOM이 연결된 생산 수요가 없습니다."
+        />
+      </section>
       <section id="traceability" className="package-panel batch-create"><header><div><small>START BATCH</small><h2>생산 batch 시작</h2></div><p>주문 수요를 참고할 수 있으며, 수동 품목으로도 생산 batch를 생성합니다.</p></header><div className="batch-form-grid"><FieldSelect id="production-requirement" label="주문 수요" value={selectedCode} onChange={(event) => setSelectedCode(event.target.value)}><option value="">수동 품목 입력</option>{overview.requirements.map((item) => <option key={item.componentCode} value={item.componentCode}>{item.componentName} ({item.componentCode})</option>)}</FieldSelect>{!selectedCode ? <><FieldInput id="manual-component-code" label="품목 코드" value={manualComponentCode} onChange={(event) => setManualComponentCode(event.target.value)} /><FieldInput id="manual-cut-name" label="품목 명칭" value={manualCutName} onChange={(event) => setManualCutName(event.target.value)} /></> : null}<TraceFields form={form} setForm={setForm} onEnter={() => void createBatch("hid")} /><Button disabled={busy === "create"} onClick={() => void createBatch()}>{busy === "create" ? "시작 중" : "batch 시작"}</Button></div><RecentTraces values={overview.recentTraceability} onUse={(trace) => applyRecent(trace, "new")} /></section>
       <section id="skin-packs" className="batch-list"><header><div><small>ACTIVE BATCHES</small><h2>생산 batch와 스킨팩 등록</h2></div><p>중량 저장 1회가 스킨팩 1개와 라벨 1개를 생성합니다.</p></header>{overview.batches.map((batch) => <article key={batch.id} className={batch.status === "in_progress" ? "active" : "complete"}><header><div><small>{batch.componentCode} · SEGMENT {batch.segmentNo}</small><h3>{batch.cutName}</h3><p>이력번호 <code>{batch.traceabilityNo}</code> · {batch.origin || "원산지 미입력"} · {batch.grade || "등급 미입력"}</p></div><strong>{batch.producedQuantity} / {batch.productionTarget}</strong></header><div className="batch-metrics"><span>당일 필요 <b>{batch.requiredQuantity}</b></span><span>시작 가용 <b>{batch.availableQuantityAtStart}</b></span><span>추가 필요 <b>{batch.additionalNeeded}</b></span></div>{batch.status === "in_progress" && <><div className="pack-entry"><label><span>다음 스킨팩 중량(g)</span><input ref={(node) => { weightRefs.current[batch.id] = node; }} type="number" min="1" step="1" value={weights[batch.id] ?? ""} onChange={(event) => setWeights((current) => ({ ...current, [batch.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createSkinPack(batch); } }} /></label><button disabled={busy === `pack:${batch.id}`} onClick={() => void createSkinPack(batch)}>저장 + 다음 팩</button></div><div className="batch-adjust"><label><span>생산목표 조정</span><input type="number" value={targets[batch.id] ?? batch.productionTarget} onChange={(event) => setTargets((current) => ({ ...current, [batch.id]: event.target.value }))} /></label><button onClick={() => void adjustTarget(batch)}>목표 저장</button><button onClick={() => void post({ action: "complete_batch", batchId: batch.id }, `complete:${batch.id}`, "batch 완료")}>batch 완료</button></div><details className="trace-change"><summary>이력번호 변경 · 새 구간 시작</summary><div className="batch-form-grid"><TraceFields form={batchForms[batch.id] ?? emptyTrace()} setForm={(next) => setBatchForms((current) => ({ ...current, [batch.id]: typeof next === "function" ? next(current[batch.id] ?? emptyTrace()) : next }))} onEnter={() => void changeTrace(batch, "hid")} /><button onClick={() => void changeTrace(batch)}>현재 구간 완료 후 변경</button></div><RecentTraces values={overview.recentTraceability} onUse={(trace) => applyRecent(trace, batch.id)} /></details></>}<footer><span>{batch.status === "completed" ? "완료된 불변 구간" : "진행 중"}</span><a href={`/api/workshop/production/batches/${encodeURIComponent(batch.id)}/csv`}>스킨팩 long CSV</a></footer></article>)}{!overview.batches.length && <div className="workshop-empty">선택 날짜에 생성된 생산 batch가 없습니다.</div>}</section>
     </main>

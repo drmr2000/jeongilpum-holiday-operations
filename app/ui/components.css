@@ -289,7 +289,7 @@
 .ui-data-table__scroll {
   width: 100%;
   overflow: auto;
-  border: 1px solid #d9d1c4;
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: #fff;
 }
@@ -361,6 +361,24 @@
 
 .ui-data-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.ui-data-table__group-row {
+  background: #eee9e0;
+}
+
+.ui-data-table__row--grouped td:first-child {
+  position: relative;
+}
+
+.ui-data-table__row--grouped td:first-child::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 20px;
+  width: 1px;
+  background: var(--line);
 }
 
 .ui-data-table__row--clickable {

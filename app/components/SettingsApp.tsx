@@ -774,6 +774,44 @@ export default function SettingsApp() {
     : bulkAction === "category"
       ? "카테고리 일괄 변경"
       : "노출 상태 일괄 변경";
+  const categoryColumns: DataTableColumn<CategoryRecord>[] = [
+    {
+      id: "name",
+      header: "카테고리",
+      cell: (category) => {
+        const categoryName = categoryDrafts[category.id] ?? category.name;
+        return (
+          <input
+            className="ui-field__control"
+            aria-label={`${category.name} 카테고리 이름`}
+            value={categoryName}
+            onChange={(event) => setCategoryDrafts((current) => ({ ...current, [category.id]: event.target.value }))}
+          />
+        );
+      },
+    },
+    {
+      id: "product-count",
+      header: "상품",
+      cell: (category) => <span style={{ color: "var(--muted)" }}>{category.productCount}개</span>,
+      width: "84px",
+    },
+    {
+      id: "actions",
+      header: "관리",
+      cell: (category) => {
+        const categoryName = categoryDrafts[category.id] ?? category.name;
+        return (
+          <span style={{ display: "inline-flex", gap: "8px" }}>
+            <Button variant="ghost" size="sm" onClick={() => void saveCategory(category)} disabled={saving || categoryName.trim() === category.name}>이름 저장</Button>
+            <Button variant="danger" size="sm" leadingIcon={<Trash2 />} onClick={() => setDeletingCategory(category)} disabled={saving}>삭제</Button>
+          </span>
+        );
+      },
+      width: "210px",
+      align: "right",
+    },
+  ];
 
   return <div className="settings-app">
     <OpsHeader surface="settings" title="정일품 정육식당 설정" subtitle="상품 관리" />
@@ -1013,29 +1051,13 @@ export default function SettingsApp() {
           />
           <Button leadingIcon={<Plus />} onClick={() => void createCategory()} disabled={saving}>카테고리 추가</Button>
         </div>
-        <div className="settings-category-table-wrap">
-          <table className="settings-category-table">
-            <thead>
-              <tr><th>카테고리</th><th>상품</th><th>관리</th></tr>
-            </thead>
-            <tbody>
-              {categories.map((category) => {
-                const categoryName = categoryDrafts[category.id] ?? category.name;
-                return <tr key={category.id}>
-                  <td><input aria-label={`${category.name} 카테고리 이름`} value={categoryName} onChange={(event) => setCategoryDrafts((current) => ({ ...current, [category.id]: event.target.value }))} /></td>
-                  <td>{category.productCount}개</td>
-                  <td>
-                    <div className="settings-category-actions">
-                      <Button variant="ghost" size="sm" onClick={() => void saveCategory(category)} disabled={saving || categoryName.trim() === category.name}>이름 저장</Button>
-                      <Button variant="danger" size="sm" leadingIcon={<Trash2 />} onClick={() => setDeletingCategory(category)} disabled={saving}>삭제</Button>
-                    </div>
-                  </td>
-                </tr>;
-              })}
-              {!categories.length ? <tr><td colSpan={3} className="settings-category-empty">등록된 카테고리가 없습니다.</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          ariaLabel="카테고리 목록"
+          rows={categories}
+          columns={categoryColumns}
+          getRowId={(category) => category.id}
+          emptyMessage="등록된 카테고리가 없습니다."
+        />
       </div>
     </Modal>
     <Modal

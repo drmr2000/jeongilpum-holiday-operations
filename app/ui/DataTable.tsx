@@ -13,6 +13,7 @@ export type DataTableColumn<Row> = {
   sortValue?: (row: Row) => DataTableSortValue;
   width?: string;
   align?: "left" | "center" | "right";
+  rowHeader?: boolean;
   multiline?: boolean;
   cellLayout?: "inline" | "stacked";
 };
@@ -90,7 +91,11 @@ export function DataTable<Row>({
     () => groups ? groups.flatMap((group) => group.rows) : rows ?? [],
     [groups, rows],
   );
-  const activeSelectedIds = selectedIds ?? internalSelectedIds;
+  const selectionEnabled = Boolean(onSelectedIdsChange);
+  const activeSelectedIds = useMemo(
+    () => selectionEnabled ? selectedIds ?? internalSelectedIds : [],
+    [internalSelectedIds, selectedIds, selectionEnabled],
+  );
   const selectedIdSet = useMemo(() => new Set(activeSelectedIds), [activeSelectedIds]);
   const selectedAll = effectiveRows.length > 0 && effectiveRows.every((row) => selectedIdSet.has(getRowId(row)));
   const selectionColumnWidth = onRowDragHandleStart ? "64px" : "42px";
@@ -154,43 +159,49 @@ export function DataTable<Row>({
         onDragOver={onRowDragOver ? (event) => onRowDragOver(row, event) : undefined}
         onDrop={onRowDrop ? (event) => onRowDrop(row, event) : undefined}
       >
-        <td className="ui-data-table__selection" onClick={(event) => event.stopPropagation()}>
-          <span className="ui-data-table__selection-controls">
-            <input
-              type="checkbox"
-              checked={selectedIdSet.has(id)}
-              onChange={() => toggleRow(row)}
-              aria-label={`${id} 선택`}
-            />
-            {onRowDragHandleStart ? (
-              <button
-                type="button"
-                className="ui-data-table__drag-handle"
-                draggable={!rowDragHandleDisabled?.(row)}
-                disabled={rowDragHandleDisabled?.(row)}
-                aria-label={getRowDragHandleLabel?.(row) ?? `${id} 순서 이동`}
-                onDragStart={(event) => onRowDragHandleStart(row, event)}
-                onDragEnd={() => onRowDragHandleEnd?.(row)}
-                onKeyDown={(event) => onRowDragHandleKeyDown?.(row, event)}
-              >
-                <GripVertical size={14} aria-hidden="true" />
-              </button>
-            ) : null}
-          </span>
-        </td>
-        {columns.map((column) => (
-          <td
-            key={column.id}
-            className={[
-              "ui-data-table__cell",
-              column.multiline ? "ui-data-table__cell--multiline" : "",
-              `ui-data-table__cell--${column.cellLayout ?? "inline"}`,
-            ].filter(Boolean).join(" ")}
-            style={{ width: column.width, textAlign: column.align ?? "left" }}
-          >
-            {column.cell(row)}
+        {selectionEnabled ? (
+          <td className="ui-data-table__selection" onClick={(event) => event.stopPropagation()}>
+            <span className="ui-data-table__selection-controls">
+              <input
+                type="checkbox"
+                checked={selectedIdSet.has(id)}
+                onChange={() => toggleRow(row)}
+                aria-label={`${id} 선택`}
+              />
+              {onRowDragHandleStart ? (
+                <button
+                  type="button"
+                  className="ui-data-table__drag-handle"
+                  draggable={!rowDragHandleDisabled?.(row)}
+                  disabled={rowDragHandleDisabled?.(row)}
+                  aria-label={getRowDragHandleLabel?.(row) ?? `${id} 순서 이동`}
+                  onDragStart={(event) => onRowDragHandleStart(row, event)}
+                  onDragEnd={() => onRowDragHandleEnd?.(row)}
+                  onKeyDown={(event) => onRowDragHandleKeyDown?.(row, event)}
+                >
+                  <GripVertical size={14} aria-hidden="true" />
+                </button>
+              ) : null}
+            </span>
           </td>
-        ))}
+        ) : null}
+        {columns.map((column) => {
+          const className = [
+            "ui-data-table__cell",
+            column.multiline ? "ui-data-table__cell--multiline" : "",
+            `ui-data-table__cell--${column.cellLayout ?? "inline"}`,
+          ].filter(Boolean).join(" ");
+          const style = { width: column.width, textAlign: column.align ?? "left" };
+          return column.rowHeader ? (
+            <th key={column.id} scope="row" className={className} style={style}>
+              {column.cell(row)}
+            </th>
+          ) : (
+            <td key={column.id} className={className} style={style}>
+              {column.cell(row)}
+            </td>
+          );
+        })}
       </tr>
     );
   };
@@ -199,23 +210,25 @@ export function DataTable<Row>({
     <div className="ui-data-table__scroll">
       <table className="ui-data-table" aria-label={ariaLabel}>
         <colgroup>
-          <col style={{ width: selectionColumnWidth }} />
+          {selectionEnabled ? <col style={{ width: selectionColumnWidth }} /> : null}
           {columns.map((column) => <col key={column.id} style={column.width ? { width: column.width } : undefined} />)}
         </colgroup>
         <thead>
           <tr>
-            <th className="ui-data-table__selection">
-              <input
-                type="checkbox"
-                checked={selectedAll}
-                onChange={toggleAll}
-                aria-label="전체 선택"
-              />
-            </th>
+            {selectionEnabled ? (
+              <th className="ui-data-table__selection">
+                <input
+                  type="checkbox"
+                  checked={selectedAll}
+                  onChange={toggleAll}
+                  aria-label="전체 선택"
+                />
+              </th>
+            ) : null}
             {columns.map((column) => {
               const sortable = !groups && Boolean(column.sortValue);
               const sorted = sortable && sort?.columnId === column.id;
-              const style = column.width ? { width: column.width } : undefined;
+              const style = { width: column.width, textAlign: column.align ?? "left" };
               return (
                 <th key={column.id} style={style} aria-sort={sorted ? (sort?.direction === "asc" ? "ascending" : "descending") : undefined}>
                   {sortable ? (
@@ -241,14 +254,14 @@ export function DataTable<Row>({
                 onDragOver={onGroupDragOver ? (event) => onGroupDragOver(group, event) : undefined}
                 onDrop={onGroupDrop ? (event) => onGroupDrop(group, event) : undefined}
               >
-                <td colSpan={columns.length + 1}>{group.header}</td>
+                <td colSpan={columns.length + (selectionEnabled ? 1 : 0)}>{group.header}</td>
               </tr>
               {group.rows.map(renderRow)}
             </Fragment>
           )) : sortedRows.map(renderRow)}
           {!effectiveRows.length ? (
             <tr>
-              <td className="ui-data-table__empty" colSpan={columns.length + 1}>{emptyMessage}</td>
+              <td className="ui-data-table__empty" colSpan={columns.length + (selectionEnabled ? 1 : 0)}>{emptyMessage}</td>
             </tr>
           ) : null}
         </tbody>
