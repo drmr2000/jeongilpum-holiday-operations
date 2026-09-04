@@ -681,7 +681,16 @@ export default function SalesApp() {
     {
       id: "status",
       header: "작업상태",
-      cell: (item) => <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
+      cell: (item) => <Badge
+        tone={workStatusTone(item.workStatus)}
+        onClick={item.workStatus === "received" ? (event) => {
+          event.stopPropagation();
+          void updateWork(item, { workStatus: "confirmed" }, `${workStatusLabel("confirmed")} 상태로 변경했습니다.`);
+        } : undefined}
+        ariaLabel={item.workStatus === "received" ? "작업 준비 상태로 변경" : undefined}
+      >
+        {WORK_STATUS_LABELS[item.workStatus]}
+      </Badge>,
       sortValue: (item) => item.workStatus,
       width: "94px",
     },
@@ -695,18 +704,6 @@ export default function SalesApp() {
       id: "actions",
       header: "처리",
       cell: (item) => <div className="sales-work-table__actions">
-        {item.workStatus === "received" ? (
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={(event) => {
-              event.stopPropagation();
-              void updateWork(item, { workStatus: "confirmed" }, `${workStatusLabel("confirmed")} 상태로 변경했습니다.`);
-            }}
-          >
-            {workStatusLabel("confirmed")}
-          </Button>
-        ) : null}
         <Button
           size="sm"
           variant={item.customerArrivedAt ? "ghost" : "primary"}
@@ -718,7 +715,7 @@ export default function SalesApp() {
           {item.customerArrivedAt ? "도착 취소" : "주문 도착"}
         </Button>
       </div>,
-      width: "176px",
+      width: "96px",
     },
   ];
   const customerRows: DataTableHierarchyRow[] = (customerData?.customers ?? []).map((customer) => {

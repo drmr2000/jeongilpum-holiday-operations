@@ -167,7 +167,7 @@
 .sales-work-table__actions {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(2, minmax(76px, 1fr));
+  grid-template-columns: minmax(76px, 1fr);
   align-items: center;
   justify-content: flex-start;
   gap: 5px;
@@ -177,10 +177,6 @@
 .sales-work-table__actions .ui-button {
   min-width: 76px;
   min-height: 40px;
-}
-
-.sales-work-table__actions .ui-button:only-child {
-  grid-column: 2;
 }
 
 .sales-work-table__error,
