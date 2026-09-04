@@ -47,16 +47,16 @@ test("shipping stores separated Kakao address fields and requires a shipping dat
 });
 
 test("operator APIs require one passcode session and create an atomic D1 fulfillment",async()=>{
- const [orders,status,session]=await Promise.all([read("app/api/orders/route.ts"),read("app/api/orders/status/route.ts"),read("app/lib/operator-session.ts")]);
- for(const source of [orders,status])assert.match(source,/requireOperatorApi/);
+ const [orders,workItems,session]=await Promise.all([read("app/api/orders/route.ts"),read("app/api/work-items/route.ts"),read("app/lib/operator-session.ts")]);
+ for(const source of [orders,workItems])assert.match(source,/requireOperatorApi/);
  assert.match(session,/PBKDF2/);
  assert.match(session,/iterations:\s*100000/);
  assert.match(orders,/idempotency_key/);
  assert.match(orders,/runtimeEnv\.DB\.batch/);
  assert.match(orders,/INSERT INTO fulfillments/);
  assert.match(orders,/INSERT INTO fulfillment_items/);
- assert.match(status,/expectedVersion/);
- assert.match(status,/version=version\+1/);
+ assert.match(workItems,/expectedVersion/);
+ assert.match(workItems,/version=version\+1/);
 });
 
 test("workshop surface is task-first and free of static customer alerts",async()=>{
@@ -153,8 +153,8 @@ test("sales date views exclude cancelled orders while search keeps history",asyn
 });
 
 test("P0 sales APIs require the shared session and disable response caches",async()=>{
- const [orders,status,fulfillment,settings,client]=await Promise.all([read("app/api/orders/route.ts"),read("app/api/orders/status/route.ts"),read("app/api/orders/fulfillment/route.ts"),read("app/api/settings/route.ts"),read("app/lib/orders-client.ts")]);
- for(const source of [orders,status,fulfillment,settings]){
+ const [orders,workItems,fulfillment,settings,client]=await Promise.all([read("app/api/orders/route.ts"),read("app/api/work-items/route.ts"),read("app/api/orders/fulfillment/route.ts"),read("app/api/settings/route.ts"),read("app/lib/orders-client.ts")]);
+ for(const source of [orders,workItems,fulfillment,settings]){
   assert.match(source,/requireOperatorApi/);
  }
  assert.match(client,/cache:"no-store"/);

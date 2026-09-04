@@ -16,8 +16,6 @@
 | GET | `/api/products` | 활성 상품, 시즌, headline | 공개 |
 | POST | `/api/orders` | main kiosk 주문 원자적 생성 | 공개 |
 | GET | `/api/orders` | 날짜별 주문·검색·상세 데이터 | 운영자 |
-| PATCH | `/api/orders/status` | 주문 상태 변경·사유가 있는 취소·reservation 해제 | 운영자 |
-| PATCH | `/api/orders/arrival` | 고객도착 등록 | 운영자 |
 | POST | `/api/orders/fulfillment` | legacy 주문 일정 지정 | 운영자 |
 | POST/DELETE | `/api/operator-session` | 운영 세션 생성·삭제 | 공개 |
 | GET | `/api/customer-ledger` | 고객 장부 목록·상세·미수·선수금 조회 | 운영자 |

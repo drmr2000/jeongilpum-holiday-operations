@@ -21,12 +21,13 @@ import {
   useResource,
 } from "../ui";
 import {
-  WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS,
+  WORK_STATUS_ALLOWED_TRANSITIONS,
   workStatusLabel,
   workStatusTone,
   type WorkStatus,
 } from "../lib/work-status";
 import OpsHeader from "./OpsHeader";
+import WorkItemHistory, { historyLabel as sharedHistoryLabel } from "./WorkItemHistory";
 import "../workshop-flow.css";
 
 type WorkItem = {
@@ -92,14 +93,14 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T12:00:00+09:00`));
 }
 
-function historyLabel(type: string) {
-  if (type.startsWith("work_status_changed:")) return "작업 상태 변경";
-  if (type === "work_item_created") return "작업 생성";
-  return type;
+function historyLabel(type: string, toValue: string | null) {
+  return sharedHistoryLabel(type, toValue);
 }
 
 function workshopAction(status: WorkStatus) {
-  const nextStatus = WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS[status][0];
+  const nextStatus = WORK_STATUS_ALLOWED_TRANSITIONS[status].find(
+    (candidate) => candidate === "in_progress" || candidate === "ready",
+  );
   if (nextStatus === "in_progress") return { status: nextStatus, label: "작업 시작", notice: "작업을 시작했습니다." };
   if (nextStatus === "ready") return { status: nextStatus, label: "작업 완료", notice: "작업을 완료했습니다." };
   return null;
@@ -448,19 +449,11 @@ export default function WorkshopApp() {
               <p>{selectedAction ? `${selectedAction.label}을 실행할 수 있습니다.` : "작업장에서 실행할 수 있는 작업이 없습니다."}</p>
             </section>
             {selected.note ? <section className="workshop-detail-note"><h3>작업 요청사항</h3><p>{selected.note}</p></section> : null}
-            <section className="workshop-detail-history">
-              <h3>작업 이력</h3>
-              {selected.events.length ? (
-                <ol>
-                  {selected.events.map((event) => (
-                    <li key={event.id}>
-                      <strong>{historyLabel(event.type)}</strong>
-                      <time>{new Date(event.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time>
-                    </li>
-                  ))}
-                </ol>
-              ) : <p>표시할 작업 이력이 없습니다.</p>}
-            </section>
+            <WorkItemHistory
+              className="workshop-detail-history"
+              events={selected.events}
+              labelForType={historyLabel}
+            />
           </div>
         ) : null}
       </Modal>

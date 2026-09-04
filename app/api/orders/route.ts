@@ -369,6 +369,7 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const date = clean(params.get("date") ?? "");
     const query = clean(params.get("q") ?? "");
+    const workItemId = clean(params.get("workItemId") ?? "");
     if (date && !validIsoDate(date)) {
       return Response.json({ error: "조회 날짜 형식을 확인해주세요." }, { status: 400 });
     }
@@ -383,6 +384,10 @@ export async function GET(request: Request) {
       const like = `%${query}%`;
       predicates.push("(o.order_no LIKE ? OR o.buyer_name LIKE ? OR o.buyer_phone LIKE ? OR w.recipient_name LIKE ? OR w.recipient_phone LIKE ?)");
       values.push(like, like, like, like, like);
+    }
+    if (workItemId) {
+      predicates.push("w.id=?");
+      values.push(workItemId);
     }
     const result = await runtimeEnv.DB.prepare(`
       SELECT

@@ -1,9 +1,10 @@
 import { env } from "cloudflare:workers";
 import { OPERATOR_ACTOR, requireOperatorApi } from "../../../lib/operator-session";
+import { workItemEventType } from "../../../lib/work-item-events";
 import {
   WORK_STATUS_OPTIONS,
-  WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS,
-  workStatusLabel,
+  prepareWorkStatusTransition,
+  WorkStatusTransitionError,
   type WorkStatus,
 } from "../../../lib/work-status";
 
@@ -22,6 +23,16 @@ type Current = {
 
 const runtimeEnv = env as typeof env & { DB: D1Database };
 
+function eventStatusMatches(value: string | null, status: WorkStatus) {
+  if (!value) return false;
+  try {
+    const parsed = JSON.parse(value) as { workStatus?: unknown };
+    return parsed.workStatus === status;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   const denied = await requireOperatorApi();
   if (denied) return denied;
@@ -36,14 +47,19 @@ export async function POST(request: Request) {
     }
     const nextStatus = status as WorkStatus;
 
-    const eventType = `work_status_changed:${idempotencyKey}`;
+    const eventType = workItemEventType("work_status_changed", idempotencyKey);
     const prior = await runtimeEnv.DB.prepare(`
       SELECT to_value
       FROM work_item_events
       WHERE work_item_id=? AND event_type=?
       LIMIT 1
     `).bind(workItemId, eventType).first<{ to_value: string | null }>();
-    if (prior) return Response.json({ ok: true, alreadyApplied: true, status: nextStatus });
+    if (prior) {
+      if (eventStatusMatches(prior.to_value, nextStatus)) {
+        return Response.json({ ok: true, alreadyApplied: true, status: nextStatus });
+      }
+      return Response.json({ error: "같은 중복방지 키에 다른 작업 상태를 사용할 수 없습니다." }, { status: 409 });
+    }
 
     const current = await runtimeEnv.DB.prepare(`
       SELECT id,order_id,work_status,version
@@ -57,21 +73,16 @@ export async function POST(request: Request) {
         latestVersion: current.version,
       }, { status: 409 });
     }
-    const allowedStatuses = WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS[current.work_status];
-    if (!allowedStatuses.includes(nextStatus)) {
-      const error = allowedStatuses.length
-        ? `현재 ${workStatusLabel(current.work_status)} 상태에서는 ${allowedStatuses.map(workStatusLabel).join(", ")} 상태로만 변경할 수 있습니다.`
-        : `현재 ${workStatusLabel(current.work_status)} 상태에서는 작업장에서 상태를 변경할 수 없습니다.`;
-      return Response.json({ error }, { status: 409 });
-    }
-
     const now = new Date().toISOString();
+    const transition = prepareWorkStatusTransition(runtimeEnv.DB, {
+      currentStatuses: [current.work_status],
+      nextStatus,
+      now,
+      whereSql: "id=? AND version=?",
+      whereBindings: [current.id, current.version],
+    });
     const results = await runtimeEnv.DB.batch([
-      runtimeEnv.DB.prepare(`
-        UPDATE work_items
-        SET work_status=?,version=version+1,updated_at=?
-        WHERE id=? AND version=?
-      `).bind(nextStatus, now, current.id, current.version),
+      transition.statement,
       runtimeEnv.DB.prepare(`
         INSERT INTO work_item_events(
           id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
@@ -122,7 +133,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "작업 상태를 변경하지 못했습니다." },
-      { status: 500 },
+      { status: error instanceof WorkStatusTransitionError ? 409 : 500 },
     );
   }
 }

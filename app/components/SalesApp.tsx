@@ -29,6 +29,7 @@ import {
   type PipelineWorkStatus,
   type WorkStatus,
 } from "../lib/work-status";
+import WorkItemHistory, { type WorkItemHistoryEvent } from "./WorkItemHistory";
 import "../sales/work-table.css";
 
 type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
@@ -72,6 +73,12 @@ type Dashboard = Record<PipelineWorkStatus, Record<DeliveryMethod, number>>;
 type WorkResponse = {
   workItems: WorkItem[];
   dashboard: Dashboard;
+};
+
+type WorkItemHistoryResponse = {
+  orders: Array<{
+    events: WorkItemHistoryEvent[];
+  }>;
 };
 
 type CustomerOrder = {
@@ -338,13 +345,14 @@ export default function SalesApp() {
     ]);
   };
 
-  const saveWorkItem = async (item: WorkItem, draft: WorkDraft) => {
+  const saveWorkItem = async (item: WorkItem, draft: WorkDraft, allowWorkStatusOverride: boolean) => {
     const response = await fetch("/api/work-items", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: item.id,
         expectedVersion: item.version,
+        allowWorkStatusOverride,
         changes: {
           productId: draft.productId,
           unitPrice: Number(draft.unitPrice),
@@ -886,6 +894,7 @@ function BulkActions({
   onDuplicate: () => void;
 }) {
   const [nextStatus, setNextStatus] = useState<WorkStatus>("confirmed");
+  const [allowWorkStatusOverride, setAllowWorkStatusOverride] = useState(false);
   const [nextDueAt, setNextDueAt] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("unpaid");
   const [paidAmount, setPaidAmount] = useState("0");
@@ -897,7 +906,15 @@ function BulkActions({
           <FieldSelect id="sales-bulk-work-status" label="작업 상태" value={nextStatus} onChange={(event) => setNextStatus(event.target.value as WorkStatus)}>
             {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </FieldSelect>
-          <Button size="sm" variant="ghost" onClick={() => void onRun({ action: "status", workStatus: nextStatus }, "작업 상태를 일괄 변경했습니다.")}>상태 변경</Button>
+          <label>
+            <input
+              type="checkbox"
+              checked={allowWorkStatusOverride}
+              onChange={(event) => setAllowWorkStatusOverride(event.target.checked)}
+            />
+            수동 정정
+          </label>
+          <Button size="sm" variant="ghost" onClick={() => void onRun({ action: "status", workStatus: nextStatus, allowWorkStatusOverride }, "작업 상태를 일괄 변경했습니다.")}>상태 변경</Button>
         </div>
         <div className="sales-work-table__bulk-action" role="group" aria-label="수령일시 일괄 변경">
           <FieldInput id="sales-bulk-due-at" label="수령일시" type="datetime-local" value={nextDueAt} onChange={(event) => setNextDueAt(event.target.value)} />
@@ -1001,15 +1018,20 @@ function WorkItemEditor({
 }: {
   item: WorkItem;
   onClose: () => void;
-  onSave: (item: WorkItem, draft: WorkDraft) => Promise<void>;
+  onSave: (item: WorkItem, draft: WorkDraft, allowWorkStatusOverride: boolean) => Promise<void>;
   onDelete: () => void;
   onDuplicate: () => void;
 }) {
   const [draft, setDraft] = useState(() => draftFor(item));
+  const [allowWorkStatusOverride, setAllowWorkStatusOverride] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const productUrl = draft.dueAt ? `/api/products?date=${encodeURIComponent(draft.dueAt.slice(0, 10))}` : null;
   const { data: productData } = useResource<ProductResponse>(productUrl, 15000);
+  const { data: historyData, error: historyError } = useResource<WorkItemHistoryResponse>(
+    `/api/orders?workItemId=${encodeURIComponent(item.id)}`,
+    2500,
+  );
   const products = productData?.products ?? [];
   const selectedProduct = products.find((product) => product.id === draft.productId);
   const currentReservation = selectedProduct
@@ -1045,7 +1067,7 @@ function WorkItemEditor({
     setSaving(true);
     setError("");
     try {
-      await onSave(item, draft);
+      await onSave(item, draft, allowWorkStatusOverride);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "작업 행을 저장하지 못했습니다.");
     } finally {
@@ -1084,6 +1106,15 @@ function WorkItemEditor({
           <FieldSelect id="work-status" label="작업 상태" value={draft.workStatus} onChange={(event) => update("workStatus", event.target.value as WorkStatus)}>
             {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </FieldSelect>
+          <label className="sales-work-table__editor-wide">
+            <input
+              type="checkbox"
+              checked={allowWorkStatusOverride}
+              disabled={draft.workStatus === item.workStatus}
+              onChange={(event) => setAllowWorkStatusOverride(event.target.checked)}
+            />
+            작업 상태 수동 정정
+          </label>
           <FieldInput id="work-recipient-name" label="수령자 성함" value={draft.recipientName} onChange={(event) => update("recipientName", event.target.value)} />
           <FieldInput id="work-recipient-phone" label="수령자 전화번호" value={draft.recipientPhone} onChange={(event) => update("recipientPhone", event.target.value)} />
           {draft.deliveryMethod === "delivery" ? <>
@@ -1099,6 +1130,12 @@ function WorkItemEditor({
         {wouldExceedDailyLimit && selectedProduct && selectedProduct.dailyLimit !== null ? <p className="sales-work-table__warning">선택한 수령일의 {selectedProduct.name} 수량이 {currentReservation + Number(draft.quantity)}개로 일일 기준 {selectedProduct.dailyLimit}개를 초과합니다. 운영자 저장은 제한하지 않습니다.</p> : null}
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
       </form>
+      <WorkItemHistory
+        className="sales-work-table__history"
+        events={historyData?.orders[0]?.events ?? []}
+        loading={!historyData && !historyError}
+        error={historyError?.message}
+      />
     </Modal>
   );
 }

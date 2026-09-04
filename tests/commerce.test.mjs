@@ -328,30 +328,6 @@ test("conditional reservation plus CHECK allows only one concurrent order at 29 
   await rm(directory, { recursive: true, force: true });
 });
 
-test("cancellation batch releases its limited-product reservation", async () => {
-  const [database, statusApi] = await Promise.all([
-    migratedDatabase(),
-    read("app/api/orders/status/route.ts"),
-  ]);
-  insertOrder(database, "cancel-limit");
-  insertItem(database, "cancel-limit", "cancel-item");
-  reserveLimited(database, "cancel-reservation", "cancel-limit", "cancel-item");
-  database.exec("BEGIN IMMEDIATE");
-  database.prepare("UPDATE orders SET order_status='cancelled' WHERE id='cancel-limit'").run();
-  database.prepare("UPDATE product_daily_reservations SET status='released',released_at=? WHERE order_id=? AND status='active'")
-    .run("2026-09-02T00:00:00.000Z", "cancel-limit");
-  database.exec("COMMIT");
-  const row = database.prepare("SELECT status,released_at FROM product_daily_reservations WHERE id='cancel-reservation'").get();
-  assert.equal(row.status, "released");
-  assert.ok(row.released_at);
-  assert.match(statusApi, /x\.status==="cancelled"/);
-  assert.match(statusApi, /UPDATE product_daily_reservations SET status='released'/);
-  assert.match(statusApi, /cancelReasonType/);
-  assert.match(statusApi, /"test","customer_cancelled","custom"/);
-  assert.match(statusApi, /INSERT INTO order_events[\s\S]*reason/);
-  database.close();
-});
-
 test("0006 groups the same name and phone into one unallocated customer ledger", async () => {
   const database = await preLedgerDatabase();
   insertOrder(database, "customer-order-1", 300_000);

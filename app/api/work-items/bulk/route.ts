@@ -1,7 +1,12 @@
 import { env } from "cloudflare:workers";
 import { OPERATOR_ACTOR, requireOperatorApi } from "../../../lib/operator-session";
+import { workItemEventType } from "../../../lib/work-item-events";
+import {
+  prepareWorkStatusTransition,
+  WorkStatusTransitionError,
+  type WorkStatus,
+} from "../../../lib/work-status";
 
-type WorkStatus = "received" | "confirmed" | "in_progress" | "ready" | "completed" | "cancelled";
 type PaymentStatus = "unpaid" | "partial" | "paid";
 
 type Selection = {
@@ -28,6 +33,10 @@ const MAX_BULK_ITEMS = 100;
 const isoDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 class RequestError extends Error {}
+
+function hasOwn(value: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -127,6 +136,9 @@ export async function PATCH(request: Request) {
   try {
     const payload = await request.json() as unknown;
     if (!isRecord(payload)) throw new RequestError("일괄 처리 정보를 확인해주세요.");
+    if (hasOwn(payload, "allowWorkStatusOverride") && typeof payload.allowWorkStatusOverride !== "boolean") {
+      throw new RequestError("작업 상태 수동 정정 여부를 확인해주세요.");
+    }
     const action = clean(payload.action);
     const selection = parseSelection(payload.items);
     const current = await selectedWorkItems(selection);
@@ -140,12 +152,18 @@ export async function PATCH(request: Request) {
       }
       const workStatus = payload.workStatus as WorkStatus;
       const now = new Date().toISOString();
+      const transition = prepareWorkStatusTransition(runtimeEnv.DB, {
+        currentStatuses: current.map((row) => row.work_status),
+        nextStatus: workStatus,
+        now,
+        whereSql: `(${selectionPredicate(selection)}) AND ${allSelectionMatches(selection)}`,
+        whereBindings: [...selectionBindings(selection), ...allSelectionBindings(selection)],
+        allowWorkStatusOverride: payload.allowWorkStatusOverride === true,
+      });
+      const idempotencyKey = clean(payload.idempotencyKey) || crypto.randomUUID();
+      const eventType = workItemEventType("work_status_changed", idempotencyKey);
       const results = await runtimeEnv.DB.batch([
-        runtimeEnv.DB.prepare(`
-          UPDATE work_items
-          SET work_status=?,version=version+1,updated_at=?
-          WHERE (${selectionPredicate(selection)}) AND ${allSelectionMatches(selection)}
-        `).bind(workStatus, now, ...selectionBindings(selection), ...allSelectionBindings(selection)),
+        transition.statement,
         ...current.map((row) =>
           runtimeEnv.DB.prepare(`
             INSERT INTO work_item_events(id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at)
@@ -155,9 +173,14 @@ export async function PATCH(request: Request) {
             crypto.randomUUID(),
             row.id,
             row.order_id,
-            "work_status_changed",
+            eventType,
             safeEventValue({ workStatus: row.work_status }),
-            safeEventValue({ workStatus, bulk: true }),
+            safeEventValue({
+              workStatus,
+              bulk: true,
+              idempotencyKey,
+              ...(transition.manualStatusOverride ? { manualStatusOverride: true } : {}),
+            }),
             OPERATOR_ACTOR,
             now,
             row.id,
@@ -453,7 +476,9 @@ export async function PATCH(request: Request) {
 
     throw new RequestError("일괄 처리 종류를 확인해주세요.");
   } catch (error) {
-    const status = error instanceof RequestError ? 400 : 500;
+    const status = error instanceof WorkStatusTransitionError
+      ? 409
+      : error instanceof RequestError ? 400 : 500;
     return Response.json(
       { error: error instanceof Error ? error.message : "작업 일괄 처리를 저장하지 못했습니다." },
       { status },

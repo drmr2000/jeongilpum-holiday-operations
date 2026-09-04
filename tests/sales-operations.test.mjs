@@ -52,23 +52,20 @@ function order(overrides = {}) {
 }
 
 test("sales API keeps cancelled history searchable and exposes work progress, customer ledger, and events", async () => {
-  const [api, arrival, sales, statusApi] = await Promise.all([
+  const [api, sales, workItems] = await Promise.all([
     read("app/api/orders/route.ts"),
-    read("app/api/orders/arrival/route.ts"),
     read("app/components/SalesApp.tsx"),
-    read("app/api/orders/status/route.ts"),
+    read("app/api/work-items/route.ts"),
   ]);
   assert.match(api, /else if \(q\)[\s\S]*SALES_SEARCH_ORDERS_SQL/);
   assert.match(api, /packageCompleted/);
   assert.match(api, /hasUnacknowledgedChange/);
   assert.match(api, /events: events\.map/);
-  assert.match(arrival, /CUSTOMER_ARRIVED/);
-  assert.match(arrival, /customer_arrived=0/);
+  assert.match(workItems, /customerArrivedAt/);
   assert.match(sales, /setInterval\([\s\S]{0,100}2500\)/);
   assert.match(sales, /addEventListener\("focus"/);
   assert.match(sales, /addEventListener\("online"/);
   assert.match(sales, /useCallback\([\s\S]*\}, \[selectedDate\]\)/);
   for (const label of ["시간", "고객", "상품", "수량", "구분", "작업상태", "결제", "고객상태", "변경"]) assert.match(sales, new RegExp(label));
-  assert.match(statusApi, /cancellationReason/);
-  assert.match(statusApi, /reason,actor_id/);
+  assert.match(workItems, /prepareWorkStatusTransition/);
 });

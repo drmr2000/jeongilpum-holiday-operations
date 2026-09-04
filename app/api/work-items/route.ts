@@ -1,8 +1,14 @@
 import { env } from "cloudflare:workers";
 import { OPERATOR_ACTOR, requireOperatorApi } from "../../lib/operator-session";
-import { PIPELINE_WORK_STATUSES, type PipelineWorkStatus } from "../../lib/work-status";
+import { workItemEventType } from "../../lib/work-item-events";
+import {
+  PIPELINE_WORK_STATUSES,
+  prepareWorkStatusTransition,
+  WorkStatusTransitionError,
+  type PipelineWorkStatus,
+  type WorkStatus,
+} from "../../lib/work-status";
 
-type WorkStatus = "received" | "confirmed" | "in_progress" | "ready" | "completed" | "cancelled";
 type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
 type WorkView = "work" | "customers";
 
@@ -481,6 +487,7 @@ function auditPayload(
     customerArrivedAt: string | null;
   },
   changedFields: string[],
+  manualStatusOverride: boolean,
 ) {
   const fromValue: Record<string, unknown> = { changedFields };
   const toValue: Record<string, unknown> = { changedFields };
@@ -522,6 +529,9 @@ function auditPayload(
   if (redactedFields.length) {
     fromValue.redactedFields = redactedFields;
     toValue.redactedFields = redactedFields;
+  }
+  if (manualStatusOverride) {
+    toValue.manualStatusOverride = true;
   }
   return { fromValue: JSON.stringify(fromValue), toValue: JSON.stringify(toValue) };
 }
@@ -609,6 +619,10 @@ export async function PATCH(request: Request) {
     if (!id || !Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
       throw new RequestError("작업 수정 정보를 확인해주세요.");
     }
+    if (hasOwn(payload, "allowWorkStatusOverride") && typeof payload.allowWorkStatusOverride !== "boolean") {
+      throw new RequestError("작업 상태 수동 정정 여부를 확인해주세요.");
+    }
+    const allowWorkStatusOverride = payload.allowWorkStatusOverride === true;
     const changedFields = Object.keys(changes);
     if (!changedFields.length || changedFields.some((field) => !EDITABLE_FIELDS.has(field))) {
       throw new RequestError("수정할 작업 항목을 확인해주세요.");
@@ -722,23 +736,39 @@ export async function PATCH(request: Request) {
     const customerArrivedChanged = hasOwn(changes, "customerArrivedAt")
       && customerArrivedAt !== current.customer_arrived_at;
     const requiresOrderUpdate = lineTotalChanged || customerArrivedChanged;
+    const statusTransition = hasOwn(changes, "workStatus")
+      ? prepareWorkStatusTransition(runtimeEnv.DB, {
+        currentStatuses: [current.work_status],
+        nextStatus: workStatus,
+        now,
+        whereSql: `id=? AND version=? ${requiresOrderUpdate ? "AND EXISTS(SELECT 1 FROM orders WHERE id=? AND version=?)" : ""}`,
+        whereBindings: [
+          id,
+          expectedVersion,
+          ...(requiresOrderUpdate ? [current.order_id, current.order_version] : []),
+        ],
+        allowWorkStatusOverride,
+      })
+      : null;
+    const workStatusChanged = Boolean(statusTransition && workStatus !== current.work_status);
     const audit = auditPayload(
       current,
       { productId, unitPrice, quantity, lineTotal, deliveryMethod, dueAt, workStatus, customerArrivedAt },
       changedFields,
+      statusTransition?.manualStatusOverride ?? false,
     );
-    const eventType = changedFields.length === 1 && changedFields[0] === "workStatus"
-      ? "work_status_changed"
+    const eventType = workStatusChanged
+      ? workItemEventType("work_status_changed", clean(payload.idempotencyKey) || crypto.randomUUID())
       : changedFields.length === 1 && changedFields[0] === "customerArrivedAt"
-        ? "customer_arrival_changed"
-        : "work_item_updated";
+        ? workItemEventType("customer_arrival_changed")
+        : workItemEventType("work_item_updated");
     const statements: D1PreparedStatement[] = [
       runtimeEnv.DB.prepare(`
         UPDATE work_items
         SET product_id=?,product_name_snapshot=?,unit_price_snapshot=?,quantity=?,line_total=?,
-          delivery_method=?,due_at=?,work_status=?,recipient_name=?,recipient_phone=?,postal_code=?,
+          delivery_method=?,due_at=?,recipient_name=?,recipient_phone=?,postal_code=?,
           road_addr=?,road_addr_reference=?,jibun_addr=?,detail_addr=?,customization_json=?,note=?,
-          version=version+1,updated_at=?
+          updated_at=?${statusTransition ? "" : ",version=version+1"}
         WHERE id=? AND version=?
           ${requiresOrderUpdate ? "AND EXISTS(SELECT 1 FROM orders WHERE id=? AND version=?)" : ""}
       `).bind(
@@ -749,7 +779,6 @@ export async function PATCH(request: Request) {
         lineTotal,
         deliveryMethod,
         dueAt,
-        workStatus,
         recipientName,
         recipientPhone,
         postalCode,
@@ -765,6 +794,9 @@ export async function PATCH(request: Request) {
         ...(requiresOrderUpdate ? [current.order_id, current.order_version] : []),
       ),
     ];
+    if (statusTransition) {
+      statements.push(statusTransition.statement);
+    }
     if (requiresOrderUpdate) {
       statements.push(runtimeEnv.DB.prepare(`
         UPDATE orders
@@ -807,13 +839,15 @@ export async function PATCH(request: Request) {
     if (!results[0].meta.changes) {
       return Response.json({ error: "다른 화면에서 먼저 수정했습니다. 새로고침 후 다시 시도해주세요." }, { status: 409 });
     }
-    if (requiresOrderUpdate && !results[1].meta.changes) {
+    if (requiresOrderUpdate && !results[statusTransition ? 2 : 1].meta.changes) {
       return Response.json({ error: "다른 화면에서 먼저 수정했습니다. 새로고침 후 다시 시도해주세요." }, { status: 409 });
     }
     const workItem = await findWorkItem(id);
     return Response.json({ workItem: workItem ? workItemRecord(workItem) : null });
   } catch (error) {
-    const status = error instanceof RequestError ? 400 : 500;
+    const status = error instanceof WorkStatusTransitionError
+      ? 409
+      : error instanceof RequestError ? 400 : 500;
     return Response.json(
       { error: error instanceof Error ? error.message : "작업을 저장하지 못했습니다." },
       { status },
