@@ -303,7 +303,7 @@
   font-size: var(--text-md);
 }
 
-.ui-data-table th {
+.ui-data-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -318,11 +318,12 @@
   white-space: nowrap;
 }
 
-.ui-data-table td {
+.ui-data-table tbody :is(td, th) {
   min-height: 40px;
   padding: 8px 10px;
   border-bottom: 1px solid #eee8df;
   background: inherit;
+  font-weight: inherit;
   vertical-align: middle;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -366,7 +367,7 @@
   font-weight: var(--weight-body);
 }
 
-.ui-data-table tbody tr:last-child td {
+.ui-data-table tbody tr:last-child > :is(td, th) {
   border-bottom: 0;
 }
 
@@ -616,8 +617,6 @@
 
 .ui-toolbar__search input {
   min-width: 0;
-  height: var(--ui-toolbar-control-height);
-  min-height: var(--ui-toolbar-control-height);
   flex: 1;
   border: 0;
   outline: 0;
@@ -657,9 +656,16 @@
 
 .ui-toolbar .ui-button,
 .ui-toolbar .ui-field__control:not(.ui-field__control--textarea),
-.ui-toolbar .ui-field__native-date {
+.ui-toolbar .ui-field__native-date,
+.ui-toolbar__search input {
   height: var(--ui-toolbar-control-height);
   min-height: var(--ui-toolbar-control-height);
+  line-height: var(--leading-tight);
+}
+
+.ui-toolbar .ui-button--icon-only {
+  width: var(--ui-toolbar-control-height);
+  min-width: var(--ui-toolbar-control-height);
 }
 
 .ui-toolbar__selection {

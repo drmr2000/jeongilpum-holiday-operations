@@ -2,9 +2,12 @@ import { env } from "cloudflare:workers";
 import { OPERATOR_ACTOR, requireOperatorApi } from "../../lib/operator-session";
 import { workItemEventType } from "../../lib/work-item-events";
 import {
+  PAYMENT_STATUSES,
+  paymentRequiresCollection,
   PIPELINE_WORK_STATUSES,
   prepareWorkStatusTransition,
   type PipelineWorkStatus,
+  type PaymentStatus,
   type WorkStatus,
 } from "../../lib/work-status";
 
@@ -37,7 +40,7 @@ type WorkItemRow = {
   order_no: string;
   buyer_name: string;
   buyer_phone: string;
-  payment_status: "unpaid" | "partial" | "paid";
+  payment_status: PaymentStatus;
   paid_amount: number;
   total_amount: number;
   customer_arrived_at: string | null;
@@ -58,7 +61,7 @@ type CustomerOrderRow = {
   order_no: string;
   buyer_name: string;
   buyer_phone: string;
-  payment_status: "unpaid" | "partial" | "paid";
+  payment_status: PaymentStatus;
   paid_amount: number;
   total_amount: number;
   version: number;
@@ -102,6 +105,7 @@ type Dashboard = Record<PipelineWorkStatus, Record<DeliveryMethod, number>>;
 const runtimeEnv = env as typeof env & { DB: D1Database };
 const WORK_STATUSES: WorkStatus[] = ["received", "confirmed", "in_progress", "ready", "completed", "cancelled"];
 const DELIVERY_METHODS: DeliveryMethod[] = ["onsite_sale", "onsite_reservation", "delivery"];
+const PAYMENT_COLLECTION_STATUSES = PAYMENT_STATUSES.filter(paymentRequiresCollection);
 const EDITABLE_FIELDS = new Set([
   "productId",
   "unitPrice",
@@ -338,7 +342,8 @@ function queryFilters(params: URLSearchParams) {
   const dateFrom = clean(params.get("dateFrom"));
   const dateTo = clean(params.get("dateTo"));
   const query = clean(params.get("q"));
-  const sort = clean(params.get("sort")) || "createdAtDesc";
+  const requestedSort = clean(params.get("sort"));
+  const sort = requestedSort || "createdAtDesc";
 
   if (workStatus && !WORK_STATUSES.includes(workStatus as WorkStatus)) {
     throw new RequestError("작업 상태 필터를 확인해주세요.");
@@ -380,12 +385,23 @@ function queryFilters(params: URLSearchParams) {
     values.push(deliveryMethod);
   }
 
+  const paymentCollectionOrderBy = {
+    sql: `CASE WHEN o.payment_status IN (${PAYMENT_COLLECTION_STATUSES.map(() => "?").join(",")}) THEN 0 ELSE 1 END`,
+    values: [...PAYMENT_COLLECTION_STATUSES],
+  };
+  const defaultCreatedAtOrderBy = (latestOrderBy: string) => ({
+    sql: `${paymentCollectionOrderBy.sql},${latestOrderBy}`,
+    values: paymentCollectionOrderBy.values,
+  });
+  const customerDefaultCreatedAtOrderBy = defaultCreatedAtOrderBy("o.created_at DESC,o.id DESC");
   const orderBy = sort === "dueAtAsc"
     ? { sql: "w.due_at ASC,w.created_at ASC,w.id ASC", values: [] as string[] }
     : sort === "dueAtDesc"
       ? { sql: "w.due_at DESC,w.created_at DESC,w.id DESC", values: [] as string[] }
       : sort === "createdAtDesc"
-        ? { sql: "w.created_at DESC,w.id DESC", values: [] as string[] }
+        ? requestedSort
+          ? { sql: "w.created_at DESC,w.id DESC", values: [] as string[] }
+          : defaultCreatedAtOrderBy("w.created_at DESC,w.id DESC")
         : {
           sql: `
             CASE
@@ -407,6 +423,7 @@ function queryFilters(params: URLSearchParams) {
     values,
     dashboardPredicates,
     dashboardValues,
+    customerDefaultCreatedAtOrderBy,
     orderBy,
     workStatus,
     deliveryMethod,
@@ -554,8 +571,8 @@ export async function GET(request: Request) {
             o.paid_amount,o.total_amount,o.version,o.created_at
           FROM orders o
           WHERE ${customerFilters.where}
-          ORDER BY o.created_at DESC,o.id DESC
-        `).bind(...customerFilters.values).all<CustomerOrderRow>(),
+          ORDER BY ${filters.customerDefaultCreatedAtOrderBy.sql}
+        `).bind(...customerFilters.values, ...filters.customerDefaultCreatedAtOrderBy.values).all<CustomerOrderRow>(),
         runtimeEnv.DB.prepare(`
           SELECT w.work_status,w.delivery_method,COUNT(*) AS count
           FROM work_items w

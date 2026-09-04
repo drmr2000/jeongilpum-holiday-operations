@@ -971,7 +971,6 @@ export default function SalesApp() {
               onRowClick={(order) => setSelectedOrder({ order, buyerName: order.buyerName, buyerPhone: order.buyerPhone })}
               selectedIds={selectedOrderIds}
               onSelectedIdsChange={setSelectedOrderIds}
-              initialSort={{ columnId: "createdAt", direction: "desc" }}
               emptyMessage="조건에 맞는 주문이 없습니다."
             />
           </section>

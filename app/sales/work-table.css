@@ -147,23 +147,23 @@
   border-left: 1px solid var(--line);
 }
 
-.sales-work-table .ui-data-table tbody tr.sales-work-table__row--payment-due > td {
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--payment-due > :is(td, th) {
   background: var(--badge-amber-background);
 }
 
-.sales-work-table .ui-data-table tbody tr.sales-work-table__row--payment-due > td:first-child {
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--payment-due > :is(td, th):first-child {
   box-shadow: inset 3px 0 0 var(--badge-amber-foreground);
 }
 
-.sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > td {
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > :is(td, th) {
   background: var(--badge-wine-background);
 }
 
-.sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > td:first-child {
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > :is(td, th):first-child {
   box-shadow: inset 3px 0 0 var(--badge-wine-foreground);
 }
 
-.sales-work-table .ui-data-table tbody tr.sales-work-table__row--soon > td {
+.sales-work-table .ui-data-table tbody tr.sales-work-table__row--soon > :is(td, th) {
   background: var(--badge-neutral-background);
 }
 
