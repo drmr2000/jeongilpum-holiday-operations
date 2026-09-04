@@ -4,8 +4,8 @@ import { useRef, useState } from "react";
 import type { ProductionBatch, ProductionOverview, RecentProductionTrace } from "../lib/production-types";
 import { operationalDateFromSearch } from "../lib/operational-date";
 import type { DataTableColumn } from "../ui";
-import { Button, DataTable, FieldInput, FieldSelect, useResource } from "../ui";
-import OpsHeader from "./OpsHeader";
+import { Button, DataTable, FieldInput, FieldSelect, OperationsPageHeader, useResource } from "../ui";
+import AppNav from "./AppNav";
 import "../workshop-flow.css";
 
 const todayInSeoul = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -133,25 +133,23 @@ export default function ProductionApp() {
   ];
 
   return <div className="workshop-app production-app">
-    <OpsHeader
-      surface="workshop"
+    <OperationsPageHeader
       title="정일품 생산장"
-      subtitle="BATCH & SKIN PACK"
+      description="BATCH & SKIN PACK"
+      href="/workshop"
       actions={(
-        <>
-          <FieldInput
-            id="production-date"
-            className="ops-header__field"
-            label="생산 기준일"
-            aria-label="생산 기준일"
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-          <a href="/workshop">화이트보드</a>
-        </>
+        <FieldInput
+          id="production-date"
+          className="ops-header__field"
+          label="생산 기준일"
+          aria-label="생산 기준일"
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+        />
       )}
     />
+    <AppNav current="workshop" />
     <main className="workshop-main production-main">
       {error && <div className="package-message error" role="alert">{error}</div>}{notice && <div className="package-message" role="status">{notice}</div>}
       {overview.missingProducts.length > 0 && <section className="production-warning"><b>BOM 미등록 상품</b><p>아래 상품은 임의 계산하지 않습니다. product_components 등록 후 생산량에 포함됩니다.</p><ul>{overview.missingProducts.map((item) => <li key={item.productId}>{item.productName} × {item.quantity}</li>)}</ul></section>}

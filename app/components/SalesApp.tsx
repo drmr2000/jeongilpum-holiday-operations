@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import OpsHeader from "./OpsHeader";
+import AppNav from "./AppNav";
 import {
   Badge,
   Button,
   DataTable,
+  DateRangeNavigator,
   FieldInput,
   FieldSelect,
   FieldTextarea,
   Modal,
+  OperationsPageHeader,
   Tabs,
   Toolbar,
   useResource,
@@ -821,13 +823,8 @@ export default function SalesApp() {
 
   return (
     <div className="sales-work-table">
-      <OpsHeader
-        surface="sales"
-        title="정일품 주문관리"
-        subtitle="판매장 운영"
-        className="sales-header"
-        actions={<Button size="sm" variant="ghost" onClick={() => void fetch("/api/operator-session", { method: "DELETE" }).then(() => location.reload())}>로그아웃</Button>}
-      />
+      <OperationsPageHeader title="정일품 판매장" description="주문 관리" href="/sales" />
+      <AppNav current="sales" />
 
       <main className="sales-work-table__main">
         <section className="sales-work-table__dashboard" aria-label="작업 수량 필터">
@@ -905,19 +902,23 @@ export default function SalesApp() {
               <option value="">모든 수령방법</option>
               {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </FieldSelect>
-            <FieldInput
-              id="sales-date-from"
-              label={<span className="sr-only">조회 시작일</span>}
-              type="date"
-              value={currentDateFrom}
-              onChange={(event) => tab === "work" ? setWorkDateFrom(event.target.value) : setCustomerDateFrom(event.target.value)}
-            />
-            <FieldInput
-              id="sales-date-to"
-              label={<span className="sr-only">조회 종료일</span>}
-              type="date"
-              value={currentDateTo}
-              onChange={(event) => tab === "work" ? setWorkDateTo(event.target.value) : setCustomerDateTo(event.target.value)}
+            <DateRangeNavigator
+              ariaLabel="조회 기간"
+              dateFrom={currentDateFrom}
+              dateFromId="sales-date-from"
+              dateFromLabel={<span className="sr-only">조회 시작일</span>}
+              dateTo={currentDateTo}
+              dateToId="sales-date-to"
+              dateToLabel={<span className="sr-only">조회 종료일</span>}
+              onChange={(dateFrom, dateTo) => {
+                if (tab === "work") {
+                  setWorkDateFrom(dateFrom);
+                  setWorkDateTo(dateTo ?? "");
+                  return;
+                }
+                setCustomerDateFrom(dateFrom);
+                setCustomerDateTo(dateTo ?? "");
+              }}
             />
           </>}
           actions={<Button size="sm" onClick={() => setNewOrderOpen(true)}>새 주문</Button>}

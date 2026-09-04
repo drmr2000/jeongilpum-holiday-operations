@@ -3,9 +3,9 @@
 import Image from "next/image";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
-import { Badge, Button, SectionTitle, useResource } from "../ui";
+import { Badge, Button, OperationsPageHeader, SectionTitle, useResource } from "../ui";
 import { PACKAGE_STATUS_LABELS, PACKAGE_STATUS_TONES, type PackageStatus } from "../lib/package-status";
-import OpsHeader from "./OpsHeader";
+import AppNav from "./AppNav";
 import "../workshop-flow.css";
 
 type PackageDetail = {
@@ -96,7 +96,8 @@ export default function PackageApp({ packageCode }: { packageCode: string }) {
   if (!detail) {
     return (
       <div className="package-page">
-        <OpsHeader surface="workshop" title="정일품 작업장" />
+        <OperationsPageHeader title="정일품 작업장" description="패키지 상세" href="/workshop" />
+        <AppNav current="workshop" />
         <main className="package-loading">{error || "패키지 정보를 불러오는 중입니다."}</main>
       </div>
     );
@@ -104,7 +105,8 @@ export default function PackageApp({ packageCode }: { packageCode: string }) {
 
   return (
     <div className="package-page">
-      <OpsHeader surface="workshop" title="정일품 작업장" subtitle={detail.packageCode} />
+      <OperationsPageHeader title="정일품 작업장" description={detail.packageCode} href="/workshop" />
+      <AppNav current="workshop" />
       <main className="package-main">
         <nav className="package-breadcrumb">
           <a href="/workshop">작업장</a>

@@ -642,6 +642,17 @@
   margin-left: auto;
 }
 
+.ui-date-range,
+.ui-date-range__fields {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+}
+
+.ui-date-range__field {
+  width: 156px;
+}
+
 .ui-toolbar__selection {
   min-height: 28px;
   padding: 0 8px;

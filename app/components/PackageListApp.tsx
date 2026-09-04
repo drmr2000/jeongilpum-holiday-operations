@@ -3,9 +3,9 @@
 import { PackageSearch } from "lucide-react";
 import { useState } from "react";
 import type { DataTableColumn } from "../ui";
-import { Badge, Button, DataTable, useResource } from "../ui";
+import { Badge, Button, DataTable, OperationsPageHeader, useResource } from "../ui";
 import { PACKAGE_STATUS_LABELS, PACKAGE_STATUS_TONES, type PackageStatus } from "../lib/package-status";
-import OpsHeader from "./OpsHeader";
+import AppNav from "./AppNav";
 import "../workshop-flow.css";
 
 type PackageSummary = {
@@ -60,19 +60,17 @@ export default function PackageListApp() {
 
   return (
     <div className="workshop-app">
-      <OpsHeader
-        surface="workshop"
+      <OperationsPageHeader
         title="정일품 작업장"
-        subtitle="패키지"
+        description="패키지"
+        href="/workshop"
         actions={(
-          <>
-            <a href="/workshop">작업장으로</a>
-            <Button variant="ghost" size="sm" disabled={loading} onClick={() => void reload()} leadingIcon={<PackageSearch size={16} />}>
-              {loading ? "조회 중" : "새로고침"}
-            </Button>
-          </>
+          <Button variant="ghost" size="sm" disabled={loading} onClick={() => void reload()} leadingIcon={<PackageSearch size={16} />}>
+            {loading ? "조회 중" : "새로고침"}
+          </Button>
         )}
       />
+      <AppNav current="workshop" />
       <main className="workshop-main">
         <section className="whiteboard-section">
           {error ? <div className="package-message error" role="alert">{error}</div> : null}

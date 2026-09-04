@@ -3,7 +3,7 @@
 
 import { FolderPlus, ImageOff, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import OpsHeader from "./OpsHeader";
+import AppNav from "./AppNav";
 import {
   Badge,
   Button,
@@ -13,6 +13,7 @@ import {
   FieldSelect,
   FieldTextarea,
   Modal,
+  OperationsPageHeader,
   Toolbar,
   useResource,
   type DataTableColumn,
@@ -814,7 +815,8 @@ export default function SettingsApp() {
   ];
 
   return <div className="settings-app">
-    <OpsHeader surface="settings" title="정일품 정육식당 설정" subtitle="상품 관리" />
+    <OperationsPageHeader title="정일품 상품 설정" description="상품 관리" href="/settings" />
+    <AppNav current="settings" />
     <main className="settings-main">
       <section className="settings-section settings-toolbar">
         <Toolbar

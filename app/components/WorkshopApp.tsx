@@ -10,12 +10,14 @@ import {
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { DataTableColumn } from "../ui";
+import AppNav from "./AppNav";
 import {
   Badge,
   Button,
   DataTable,
-  FieldInput,
+  DateRangeNavigator,
   Modal,
+  OperationsPageHeader,
   Tabs,
   Toolbar,
   useResource,
@@ -25,7 +27,6 @@ import {
   workStatusTone,
   type WorkStatus,
 } from "../lib/work-status";
-import OpsHeader from "./OpsHeader";
 import WorkItemHistory from "./WorkItemHistory";
 import "../workshop-flow.css";
 
@@ -114,15 +115,6 @@ function todayInSeoul() {
 
 function formatTime(value: string) {
   return value.slice(11, 16);
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(new Date(`${value}T12:00:00+09:00`));
 }
 
 const WORKSHOP_ACTIONS: Partial<Record<WorkStatus, { status: WorkStatus; label: string; notice: string }>> = {
@@ -367,21 +359,20 @@ export default function WorkshopApp() {
 
   return (
     <div className="workshop-app">
-      <OpsHeader surface="workshop" title="정일품 작업장" subtitle={formatDate(date)} />
+      <OperationsPageHeader title="정일품 작업장" description="작업 관리" href="/workshop" />
+      <AppNav current="workshop" />
 
       <main className="workshop-main">
         <section className="workshop-date-toolbar" aria-label="작업 기준일 선택">
           <Toolbar
             filters={
-              <FieldInput
-                id="workshop-date"
-                className="workshop-date-field"
-                label={<span className="sr-only">작업일</span>}
-                aria-label="작업일"
-                type="date"
-                value={date}
-                onChange={(event) => {
-                  setDate(event.target.value);
+              <DateRangeNavigator
+                ariaLabel="작업 기준일"
+                dateFrom={date}
+                dateFromId="workshop-date"
+                dateFromLabel={<span className="sr-only">작업일</span>}
+                onChange={(dateFrom) => {
+                  setDate(dateFrom);
                   setSelectedIds([]);
                   setBulkActionModalOpen(false);
                 }}

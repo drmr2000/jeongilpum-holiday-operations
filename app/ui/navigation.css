@@ -47,7 +47,8 @@
   justify-content: flex-end;
   gap: 12px;
 }
-.ops-header__date {
+.ops-header__date,
+.ops-header__time {
   flex: none;
   color: var(--muted);
   font-size: var(--text-sm);
@@ -59,22 +60,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.ops-alerts button, .ops-alerts a {
-  border: 1px solid #ddd5c9;
-  background: #fff;
-  border-radius: 18px;
-  padding: 8px 10px;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-body);
-  text-decoration: none;
-  color: inherit;
-}
-.ops-alerts button b {
-  color: #fff;
-  background: #b23a32;
-  border-radius: 10px;
-  padding: 2px 5px;
 }
 .ops-header__field {
   min-width: 0;
@@ -91,7 +76,6 @@
   white-space: nowrap;
   border: 0;
 }
-
 @media (max-width: 700px) {
   .ops-header {
     min-height: auto;
