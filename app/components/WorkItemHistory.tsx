@@ -4,12 +4,11 @@ export type WorkItemHistoryEvent = {
   id: string;
   type: string;
   fromValue: string | null;
-  toValue: string | null;
   createdAt: string;
 };
 
-export function historyLabel(type: string, toValue: string | null) {
-  return workItemEventLabel(type, toValue);
+export function historyLabel(type: string) {
+  return workItemEventLabel(type);
 }
 
 export default function WorkItemHistory({
@@ -23,7 +22,7 @@ export default function WorkItemHistory({
   loading?: boolean;
   error?: string;
   className?: string;
-  labelForType?: (type: string, toValue: string | null) => string;
+  labelForType?: (type: string) => string;
 }) {
   return (
     <section className={className}>
@@ -34,7 +33,7 @@ export default function WorkItemHistory({
         <ol>
           {events.map((event) => (
             <li key={event.id}>
-              <strong>{labelForType(event.type, event.toValue)}</strong>
+              <strong>{labelForType(event.type)}</strong>
               <time>{new Date(event.createdAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time>
             </li>
           ))}

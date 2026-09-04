@@ -21,13 +21,12 @@ import {
   useResource,
 } from "../ui";
 import {
-  WORK_STATUS_ALLOWED_TRANSITIONS,
   workStatusLabel,
   workStatusTone,
   type WorkStatus,
 } from "../lib/work-status";
 import OpsHeader from "./OpsHeader";
-import WorkItemHistory, { historyLabel as sharedHistoryLabel } from "./WorkItemHistory";
+import WorkItemHistory from "./WorkItemHistory";
 import "../workshop-flow.css";
 
 type WorkItem = {
@@ -126,17 +125,14 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T12:00:00+09:00`));
 }
 
-function historyLabel(type: string, toValue: string | null) {
-  return sharedHistoryLabel(type, toValue);
-}
+const WORKSHOP_ACTIONS: Partial<Record<WorkStatus, { status: WorkStatus; label: string; notice: string }>> = {
+  received: { status: "in_progress", label: "작업 시작", notice: "작업을 시작했습니다." },
+  confirmed: { status: "in_progress", label: "작업 시작", notice: "작업을 시작했습니다." },
+  in_progress: { status: "ready", label: "작업 완료", notice: "작업을 완료했습니다." },
+};
 
 function workshopAction(status: WorkStatus) {
-  const nextStatus = WORK_STATUS_ALLOWED_TRANSITIONS[status].find(
-    (candidate) => candidate === "in_progress" || candidate === "ready",
-  );
-  if (nextStatus === "in_progress") return { status: nextStatus, label: "작업 시작", notice: "작업을 시작했습니다." };
-  if (nextStatus === "ready") return { status: nextStatus, label: "작업 완료", notice: "작업을 완료했습니다." };
-  return null;
+  return WORKSHOP_ACTIONS[status] ?? null;
 }
 
 function workItemGroups(items: WorkItem[], orderByTime: boolean) {
@@ -490,7 +486,6 @@ export default function WorkshopApp() {
             <WorkItemHistory
               className="workshop-detail-history"
               events={selected.events}
-              labelForType={historyLabel}
             />
           </div>
         ) : null}

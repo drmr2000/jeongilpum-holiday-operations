@@ -37,15 +37,6 @@ const WORK_STATUS_TONES: Record<WorkStatus, BadgeTone> = {
   cancelled: "danger",
 };
 
-export const WORK_STATUS_ALLOWED_TRANSITIONS: Readonly<Record<WorkStatus, readonly WorkStatus[]>> = {
-  received: ["confirmed", "in_progress"],
-  confirmed: ["in_progress"],
-  in_progress: ["ready"],
-  ready: [],
-  completed: [],
-  cancelled: [],
-};
-
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
@@ -60,45 +51,25 @@ const PAYMENT_STATUS_TONES: Record<PaymentStatus, BadgeTone> = {
   paid: "green",
 };
 
-export class WorkStatusTransitionError extends Error {}
-
 export function prepareWorkStatusTransition(
   database: D1Database,
   {
-    currentStatuses,
     nextStatus,
     now,
     whereSql,
     whereBindings,
-    allowWorkStatusOverride = false,
   }: {
-    currentStatuses: readonly WorkStatus[];
     nextStatus: WorkStatus;
     now: string;
     whereSql: string;
     whereBindings: unknown[];
-    allowWorkStatusOverride?: boolean;
   },
 ) {
-  const blockedStatus = currentStatuses.find(
-    (currentStatus) => currentStatus !== nextStatus
-      && !WORK_STATUS_ALLOWED_TRANSITIONS[currentStatus].includes(nextStatus),
-  );
-  if (blockedStatus && !allowWorkStatusOverride) {
-    const allowedStatuses = WORK_STATUS_ALLOWED_TRANSITIONS[blockedStatus];
-    const message = allowedStatuses.length
-      ? `현재 ${workStatusLabel(blockedStatus)} 상태에서는 ${allowedStatuses.map(workStatusLabel).join(", ")} 상태로만 변경할 수 있습니다.`
-      : `현재 ${workStatusLabel(blockedStatus)} 상태에서는 작업 상태를 변경할 수 없습니다.`;
-    throw new WorkStatusTransitionError(message);
-  }
-  return {
-    manualStatusOverride: Boolean(blockedStatus && allowWorkStatusOverride),
-    statement: database.prepare(`
-      UPDATE work_items
-      SET work_status=?,version=version+1,updated_at=?
-      WHERE ${whereSql}
-    `).bind(nextStatus, now, ...whereBindings),
-  };
+  return database.prepare(`
+    UPDATE work_items
+    SET work_status=?,version=version+1,updated_at=?
+    WHERE ${whereSql}
+  `).bind(nextStatus, now, ...whereBindings);
 }
 
 export function workStatusLabel(status: WorkStatus) {

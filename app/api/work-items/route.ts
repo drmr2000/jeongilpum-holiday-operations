@@ -4,7 +4,6 @@ import { workItemEventType } from "../../lib/work-item-events";
 import {
   PIPELINE_WORK_STATUSES,
   prepareWorkStatusTransition,
-  WorkStatusTransitionError,
   type PipelineWorkStatus,
   type WorkStatus,
 } from "../../lib/work-status";
@@ -487,7 +486,6 @@ function auditPayload(
     customerArrivedAt: string | null;
   },
   changedFields: string[],
-  manualStatusOverride: boolean,
 ) {
   const fromValue: Record<string, unknown> = { changedFields };
   const toValue: Record<string, unknown> = { changedFields };
@@ -529,9 +527,6 @@ function auditPayload(
   if (redactedFields.length) {
     fromValue.redactedFields = redactedFields;
     toValue.redactedFields = redactedFields;
-  }
-  if (manualStatusOverride) {
-    toValue.manualStatusOverride = true;
   }
   return { fromValue: JSON.stringify(fromValue), toValue: JSON.stringify(toValue) };
 }
@@ -619,10 +614,6 @@ export async function PATCH(request: Request) {
     if (!id || !Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
       throw new RequestError("작업 수정 정보를 확인해주세요.");
     }
-    if (hasOwn(payload, "allowWorkStatusOverride") && typeof payload.allowWorkStatusOverride !== "boolean") {
-      throw new RequestError("작업 상태 수동 정정 여부를 확인해주세요.");
-    }
-    const allowWorkStatusOverride = payload.allowWorkStatusOverride === true;
     const changedFields = Object.keys(changes);
     if (!changedFields.length || changedFields.some((field) => !EDITABLE_FIELDS.has(field))) {
       throw new RequestError("수정할 작업 항목을 확인해주세요.");
@@ -738,7 +729,6 @@ export async function PATCH(request: Request) {
     const requiresOrderUpdate = lineTotalChanged || customerArrivedChanged;
     const statusTransition = hasOwn(changes, "workStatus")
       ? prepareWorkStatusTransition(runtimeEnv.DB, {
-        currentStatuses: [current.work_status],
         nextStatus: workStatus,
         now,
         whereSql: `id=? AND version=? ${requiresOrderUpdate ? "AND EXISTS(SELECT 1 FROM orders WHERE id=? AND version=?)" : ""}`,
@@ -747,7 +737,6 @@ export async function PATCH(request: Request) {
           expectedVersion,
           ...(requiresOrderUpdate ? [current.order_id, current.order_version] : []),
         ],
-        allowWorkStatusOverride,
       })
       : null;
     const workStatusChanged = Boolean(statusTransition && workStatus !== current.work_status);
@@ -755,7 +744,6 @@ export async function PATCH(request: Request) {
       current,
       { productId, unitPrice, quantity, lineTotal, deliveryMethod, dueAt, workStatus, customerArrivedAt },
       changedFields,
-      statusTransition?.manualStatusOverride ?? false,
     );
     const eventType = workStatusChanged
       ? workItemEventType("work_status_changed", clean(payload.idempotencyKey) || crypto.randomUUID())
@@ -795,7 +783,7 @@ export async function PATCH(request: Request) {
       ),
     ];
     if (statusTransition) {
-      statements.push(statusTransition.statement);
+      statements.push(statusTransition);
     }
     if (requiresOrderUpdate) {
       statements.push(runtimeEnv.DB.prepare(`
@@ -845,9 +833,7 @@ export async function PATCH(request: Request) {
     const workItem = await findWorkItem(id);
     return Response.json({ workItem: workItem ? workItemRecord(workItem) : null });
   } catch (error) {
-    const status = error instanceof WorkStatusTransitionError
-      ? 409
-      : error instanceof RequestError ? 400 : 500;
+    const status = error instanceof RequestError ? 400 : 500;
     return Response.json(
       { error: error instanceof Error ? error.message : "작업을 저장하지 못했습니다." },
       { status },

@@ -39,29 +39,12 @@ function eventKindFromType(type: string) {
     : null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasManualStatusOverride(value: string | null) {
-  if (!value) return false;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return isRecord(parsed) && parsed.manualStatusOverride === true;
-  } catch {
-    return false;
-  }
-}
-
 export function workItemEventType(kind: WorkItemEventKind, idempotencyKey?: string) {
   const suffix = idempotencyKey?.trim();
   return suffix ? `${kind}:${suffix}` : kind;
 }
 
-export function workItemEventLabel(type: string, toValue: string | null) {
+export function workItemEventLabel(type: string) {
   const kind = eventKindFromType(type);
-  if (kind === "work_status_changed" && hasManualStatusOverride(toValue)) {
-    return "작업 상태 수동 정정";
-  }
   return kind ? WORK_ITEM_EVENT_LABELS[kind] : "작업 이력 기록";
 }

@@ -4,7 +4,6 @@ import { workItemEventType } from "../../../lib/work-item-events";
 import {
   WORK_STATUS_OPTIONS,
   prepareWorkStatusTransition,
-  WorkStatusTransitionError,
   type WorkStatus,
 } from "../../../lib/work-status";
 
@@ -75,14 +74,13 @@ export async function POST(request: Request) {
     }
     const now = new Date().toISOString();
     const transition = prepareWorkStatusTransition(runtimeEnv.DB, {
-      currentStatuses: [current.work_status],
       nextStatus,
       now,
       whereSql: "id=? AND version=?",
       whereBindings: [current.id, current.version],
     });
     const results = await runtimeEnv.DB.batch([
-      transition.statement,
+      transition,
       runtimeEnv.DB.prepare(`
         INSERT INTO work_item_events(
           id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
@@ -133,7 +131,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "작업 상태를 변경하지 못했습니다." },
-      { status: error instanceof WorkStatusTransitionError ? 409 : 500 },
+      { status: 500 },
     );
   }
 }
