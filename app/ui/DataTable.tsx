@@ -93,6 +93,7 @@ export function DataTable<Row>({
   const activeSelectedIds = selectedIds ?? internalSelectedIds;
   const selectedIdSet = useMemo(() => new Set(activeSelectedIds), [activeSelectedIds]);
   const selectedAll = effectiveRows.length > 0 && effectiveRows.every((row) => selectedIdSet.has(getRowId(row)));
+  const selectionColumnWidth = onRowDragHandleStart ? "64px" : "42px";
 
   const sortedRows = useMemo(() => {
     if (groups || !sort) return effectiveRows;
@@ -198,7 +199,7 @@ export function DataTable<Row>({
     <div className="ui-data-table__scroll">
       <table className="ui-data-table" aria-label={ariaLabel}>
         <colgroup>
-          <col style={{ width: "42px" }} />
+          <col style={{ width: selectionColumnWidth }} />
           {columns.map((column) => <col key={column.id} style={column.width ? { width: column.width } : undefined} />)}
         </colgroup>
         <thead>

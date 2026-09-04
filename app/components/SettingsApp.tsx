@@ -1,9 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { FolderPlus, GripVertical, ImageOff, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { FolderPlus, ImageOff, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { DragEvent } from "react";
 import OpsHeader from "./OpsHeader";
 import {
   Badge,
@@ -96,6 +95,46 @@ type BulkAction = "daily-limit" | "category" | "active" | null;
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const formattedInteger = (value: number) => value.toLocaleString("ko-KR");
 
+type DailyLimitStatus = "unlimited" | "sold_out" | "limited";
+type RemainingStatus = "unlimited" | "sold_out" | "low" | "available";
+type VisibilityStatus = "visible" | "hidden";
+
+const DAILY_LIMIT_LABELS: Record<DailyLimitStatus, string> = {
+  unlimited: "무제한",
+  sold_out: "세트",
+  limited: "세트",
+};
+
+const DAILY_LIMIT_TONES: Record<DailyLimitStatus, import("../ui").BadgeTone> = {
+  unlimited: "neutral",
+  sold_out: "danger",
+  limited: "amber",
+};
+
+const REMAINING_LABELS: Record<RemainingStatus, string> = {
+  unlimited: "무제한",
+  sold_out: "세트",
+  low: "세트",
+  available: "세트",
+};
+
+const REMAINING_TONES: Record<RemainingStatus, import("../ui").BadgeTone> = {
+  unlimited: "neutral",
+  sold_out: "danger",
+  low: "amber",
+  available: "green",
+};
+
+const VISIBILITY_LABELS: Record<VisibilityStatus, string> = {
+  visible: "노출",
+  hidden: "숨김",
+};
+
+const VISIBILITY_TONES: Record<VisibilityStatus, import("../ui").BadgeTone> = {
+  visible: "green",
+  hidden: "slate",
+};
+
 function numericText(value: string) {
   const digits = value.replace(/\D/g, "");
   return digits ? Number(digits).toLocaleString("ko-KR") : "";
@@ -106,6 +145,31 @@ function parsedInteger(value: string) {
   if (!normalized || !/^\d+$/.test(normalized)) return null;
   const parsed = Number(normalized);
   return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function dailyLimitStatus(dailyLimit: number | null): DailyLimitStatus {
+  if (dailyLimit === null) return "unlimited";
+  return dailyLimit === 0 ? "sold_out" : "limited";
+}
+
+function dailyLimitLabel(dailyLimit: number | null) {
+  const status = dailyLimitStatus(dailyLimit);
+  return status === "unlimited"
+    ? DAILY_LIMIT_LABELS[status]
+    : `${dailyLimit?.toLocaleString("ko-KR")}${DAILY_LIMIT_LABELS[status]}`;
+}
+
+function remainingStatus(dailyLimit: number | null, reservedQuantity: number): RemainingStatus {
+  if (dailyLimit === null) return "unlimited";
+  const remaining = Math.max(0, dailyLimit - reservedQuantity);
+  if (remaining === 0) return "sold_out";
+  return remaining <= dailyLimit * 0.25 ? "low" : "available";
+}
+
+function remainingLabel(dailyLimit: number | null, reservedQuantity: number) {
+  const status = remainingStatus(dailyLimit, reservedQuantity);
+  if (status === "unlimited") return REMAINING_LABELS[status];
+  return `${Math.max(0, (dailyLimit ?? 0) - reservedQuantity).toLocaleString("ko-KR")}${REMAINING_LABELS[status]}`;
 }
 
 function draftFor(product: ProductRecord): ProductDraft {
@@ -647,36 +711,6 @@ export default function SettingsApp() {
 
   const columns: DataTableColumn<ProductRecord>[] = [
     {
-      id: "handle",
-      header: "순서",
-      cell: (product) => (
-        <button
-          type="button"
-          className="settings-row-handle"
-          draggable={!reordering}
-          disabled={reordering}
-          aria-label={`${product.name} 순서 이동, 화살표 키로 같은 카테고리 내에서 이동`}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-            event.preventDefault();
-            stepProduct(product.id, event.key === "ArrowUp" ? -1 : 1);
-          }}
-          onDragStart={(event: DragEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-            event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("text/plain", product.id);
-            setDraggedProductId(product.id);
-          }}
-          onDragEnd={() => setDraggedProductId(null)}
-        >
-          <GripVertical size={16} aria-hidden="true" />
-        </button>
-      ),
-      width: "56px",
-    },
-    {
       id: "thumbnail",
       header: "사진",
       cell: (product) => {
@@ -706,9 +740,10 @@ export default function SettingsApp() {
     {
       id: "daily-limit",
       header: "한정수량",
-      cell: (product) => product.dailyLimit === null
-        ? <Badge tone="neutral">무제한</Badge>
-        : <Badge tone={product.dailyLimit === 0 ? "danger" : "info"}>{product.dailyLimit.toLocaleString("ko-KR")}세트</Badge>,
+      cell: (product) => {
+        const status = dailyLimitStatus(product.dailyLimit);
+        return <Badge tone={DAILY_LIMIT_TONES[status]}>{dailyLimitLabel(product.dailyLimit)}</Badge>;
+      },
       width: "120px",
       align: "center",
     },
@@ -716,11 +751,8 @@ export default function SettingsApp() {
       id: "remaining",
       header: "잔여",
       cell: (product) => {
-        if (product.dailyLimit === null) return <Badge tone="neutral">무제한</Badge>;
-        const remaining = Math.max(0, product.dailyLimit - product.reservedQuantity);
-        return <Badge tone={remaining <= product.dailyLimit * 0.25 ? "danger" : "success"}>
-          {remaining.toLocaleString("ko-KR")}세트
-        </Badge>;
+        const status = remainingStatus(product.dailyLimit, product.reservedQuantity);
+        return <Badge tone={REMAINING_TONES[status]}>{remainingLabel(product.dailyLimit, product.reservedQuantity)}</Badge>;
       },
       width: "105px",
       align: "center",
@@ -728,7 +760,10 @@ export default function SettingsApp() {
     {
       id: "active",
       header: "노출",
-      cell: (product) => <Badge tone={product.active ? "success" : "neutral"}>{product.active ? "노출" : "숨김"}</Badge>,
+      cell: (product) => {
+        const status: VisibilityStatus = product.active ? "visible" : "hidden";
+        return <Badge tone={VISIBILITY_TONES[status]}>{VISIBILITY_LABELS[status]}</Badge>;
+      },
       width: "90px",
       align: "center",
     },
@@ -849,6 +884,21 @@ export default function SettingsApp() {
             const sourceId = event.dataTransfer.getData("text/plain") || draggedProductId;
             if (sourceId) relocateProduct(sourceId, group.id, null);
           }}
+          onRowDragHandleStart={(product, event) => {
+            event.stopPropagation();
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", product.id);
+            setDraggedProductId(product.id);
+          }}
+          onRowDragHandleEnd={() => setDraggedProductId(null)}
+          onRowDragHandleKeyDown={(product, event) => {
+            event.stopPropagation();
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+            event.preventDefault();
+            stepProduct(product.id, event.key === "ArrowUp" ? -1 : 1);
+          }}
+          rowDragHandleDisabled={() => reordering}
+          getRowDragHandleLabel={(product) => `${product.name} 순서 이동, 화살표 키로 같은 카테고리 내에서 이동`}
           selectedIds={selectedIds}
           onSelectedIdsChange={setSelectedIds}
           emptyMessage="검색 조건에 맞는 상품이 없습니다."

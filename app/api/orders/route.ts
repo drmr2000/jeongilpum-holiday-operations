@@ -443,7 +443,7 @@ export async function POST(request: Request) {
       && Number.isInteger(customAmount)
       && customAmount >= 200_000,
     );
-    const buyer = fulfillmentType === "onsite" ? "현장판매 고객" : clean(payload.buyerName);
+    const buyer = fulfillmentType === "onsite" ? "현장판매 주문" : clean(payload.buyerName);
     const buyerPhone = fulfillmentType === "onsite" ? "" : normalizePhone(payload.buyerPhone ?? "");
 
     if (

@@ -66,7 +66,7 @@ export async function PATCH(request: Request) {
     return Response.json({ ok: true, alreadyArrived: false });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "고객 도착을 기록하지 못했습니다." },
+      { error: error instanceof Error ? error.message : "주문 도착을 기록하지 못했습니다." },
       { status: 500 },
     );
   }

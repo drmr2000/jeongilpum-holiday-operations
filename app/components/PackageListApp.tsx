@@ -4,6 +4,7 @@ import { PackageSearch } from "lucide-react";
 import { useState } from "react";
 import type { DataTableColumn } from "../ui";
 import { Badge, Button, DataTable, useResource } from "../ui";
+import { PACKAGE_STATUS_LABELS, PACKAGE_STATUS_TONES, type PackageStatus } from "../lib/package-status";
 import OpsHeader from "./OpsHeader";
 import "../workshop-flow.css";
 
@@ -11,7 +12,7 @@ type PackageSummary = {
   id: string;
   packageCode: string;
   productName: string;
-  packageStatus: string;
+  packageStatus: PackageStatus;
   workItemId: string | null;
   orderNo: string | null;
   schedule: string;
@@ -52,7 +53,7 @@ export default function PackageListApp() {
     {
       id: "status",
       header: "상태",
-      cell: (item) => <Badge tone={item.packageStatus === "completed" ? "success" : "neutral"}>{item.packageStatus}</Badge>,
+      cell: (item) => <Badge tone={PACKAGE_STATUS_TONES[item.packageStatus]}>{PACKAGE_STATUS_LABELS[item.packageStatus]}</Badge>,
       sortValue: (item) => item.packageStatus,
     },
   ];

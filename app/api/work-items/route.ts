@@ -710,7 +710,7 @@ export async function PATCH(request: Request) {
     }
     if (hasOwn(changes, "customerArrivedAt")) {
       const value = valueForArrival(changes.customerArrivedAt, now);
-      if (value === undefined) throw new RequestError("고객 도착 상태를 확인해주세요.");
+      if (value === undefined) throw new RequestError("주문 도착 상태를 확인해주세요.");
       customerArrivedAt = value;
     }
 

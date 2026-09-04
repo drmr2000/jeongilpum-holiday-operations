@@ -255,8 +255,8 @@
   color: #326e9e;
 }
 .state.confirmed {
-  background: #eeeafa;
-  color: #644bab;
+  background: var(--badge-slate-background);
+  color: var(--badge-slate-foreground);
 }
 .state.in_progress {
   background: #fff0df;

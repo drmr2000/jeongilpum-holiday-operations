@@ -512,19 +512,61 @@
   color: var(--badge-neutral-foreground);
 }
 
-.ui-badge--info {
-  background: var(--badge-info-background);
-  color: var(--badge-info-foreground);
+.ui-badge--amber {
+  background: var(--badge-amber-background);
+  color: var(--badge-amber-foreground);
 }
 
-.ui-badge--success {
-  background: var(--badge-success-background);
-  color: var(--badge-success-foreground);
+.ui-badge--slate {
+  background: var(--badge-slate-background);
+  color: var(--badge-slate-foreground);
+}
+
+.ui-badge--green {
+  background: var(--badge-green-background);
+  color: var(--badge-green-foreground);
+}
+
+.ui-badge--wine {
+  background: var(--badge-wine-background);
+  color: var(--badge-wine-foreground);
 }
 
 .ui-badge--danger {
   background: var(--badge-danger-background);
   color: var(--badge-danger-foreground);
+}
+
+.ui-badge--pressable {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.ui-badge--pressable:hover {
+  box-shadow: inset 0 0 0 1px currentColor;
+  transform: translateY(-1px);
+}
+
+.ui-badge--pressable:focus-visible {
+  outline: 2px solid var(--wine);
+  outline-offset: 2px;
+}
+
+.ui-badge__action-icon {
+  width: 14px;
+  height: 14px;
+  margin-left: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-badge__action-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .ui-toolbar {

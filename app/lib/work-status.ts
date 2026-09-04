@@ -30,10 +30,10 @@ export type PipelineWorkStatus = (typeof PIPELINE_WORK_STATUSES)[number];
 
 const WORK_STATUS_TONES: Record<WorkStatus, BadgeTone> = {
   received: "neutral",
-  confirmed: "neutral",
-  in_progress: "info",
-  ready: "success",
-  completed: "neutral",
+  confirmed: "amber",
+  in_progress: "wine",
+  ready: "green",
+  completed: "slate",
   cancelled: "danger",
 };
 
@@ -48,6 +48,18 @@ export const WORKSHOP_ALLOWED_WORK_STATUS_TRANSITIONS: Readonly<Record<WorkStatu
 
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  unpaid: "주문",
+  partial: "부분결제",
+  paid: "결제완료",
+};
+
+const PAYMENT_STATUS_TONES: Record<PaymentStatus, BadgeTone> = {
+  unpaid: "neutral",
+  partial: "amber",
+  paid: "green",
+};
+
 export function workStatusLabel(status: WorkStatus) {
   return WORK_STATUS_LABELS[status];
 }
@@ -57,5 +69,5 @@ export function workStatusTone(status: WorkStatus): BadgeTone {
 }
 
 export function paymentStatusTone(status: PaymentStatus): BadgeTone {
-  return status === "paid" ? "success" : "neutral";
+  return PAYMENT_STATUS_TONES[status];
 }

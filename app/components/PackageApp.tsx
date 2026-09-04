@@ -4,6 +4,7 @@ import Image from "next/image";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Badge, Button, SectionTitle, useResource } from "../ui";
+import { PACKAGE_STATUS_LABELS, PACKAGE_STATUS_TONES, type PackageStatus } from "../lib/package-status";
 import OpsHeader from "./OpsHeader";
 import "../workshop-flow.css";
 
@@ -11,7 +12,7 @@ type PackageDetail = {
   packageId: string;
   workItemId: string | null;
   packageCode: string;
-  packageStatus: string;
+  packageStatus: PackageStatus;
   productName: string;
   orderNo: string | null;
   schedule: string | null;
@@ -114,7 +115,7 @@ export default function PackageApp({ packageCode }: { packageCode: string }) {
           <div>
             <p>{detail.productName}</p>
             <p>{detail.schedule ?? "수동 패키지 · 연결된 작업 일정 없음"}</p>
-            <Badge tone={detail.packageStatus === "completed" ? "success" : "neutral"}>{detail.packageStatus}</Badge>
+            <Badge tone={PACKAGE_STATUS_TONES[detail.packageStatus]}>{PACKAGE_STATUS_LABELS[detail.packageStatus]}</Badge>
           </div>
           {qrData ? (
             <figure>

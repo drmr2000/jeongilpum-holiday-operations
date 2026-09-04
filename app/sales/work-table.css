@@ -107,11 +107,11 @@
 }
 
 .sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > td {
-  background: var(--badge-danger-background);
+  background: var(--badge-wine-background);
 }
 
 .sales-work-table .ui-data-table tbody tr.sales-work-table__row--urgent > td:first-child {
-  box-shadow: inset 3px 0 0 var(--badge-danger-foreground);
+  box-shadow: inset 3px 0 0 var(--badge-wine-foreground);
 }
 
 .sales-work-table .ui-data-table tbody tr.sales-work-table__row--soon > td {
@@ -135,8 +135,15 @@
 
 .sales-work-table__actions {
   display: flex;
+  align-items: center;
+  justify-content: flex-start;
   gap: 5px;
   white-space: nowrap;
+}
+
+.sales-work-table__actions .ui-button {
+  min-width: 76px;
+  min-height: 40px;
 }
 
 .sales-work-table__error,

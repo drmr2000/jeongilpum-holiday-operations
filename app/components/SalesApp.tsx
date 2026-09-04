@@ -19,6 +19,7 @@ import {
 } from "../ui";
 import {
   PIPELINE_WORK_STATUSES,
+  PAYMENT_STATUS_LABELS,
   WORK_STATUS_LABELS,
   WORK_STATUS_OPTIONS,
   paymentStatusTone,
@@ -152,10 +153,10 @@ const DELIVERY_LABELS: Record<DeliveryMethod, string> = {
   delivery: "택배예약",
 };
 
-const PAYMENT_LABELS: Record<PaymentStatus, string> = {
-  unpaid: "미수",
-  partial: "부분결제",
-  paid: "결제완료",
+const DELIVERY_TONES: Record<DeliveryMethod, import("../ui").BadgeTone> = {
+  onsite_sale: "neutral",
+  onsite_reservation: "amber",
+  delivery: "slate",
 };
 
 function todayInSeoul() {
@@ -611,23 +612,33 @@ export default function SalesApp() {
     {
       id: "delivery",
       header: "수령방법",
-      cell: (item) => <Badge tone={item.deliveryMethod === "delivery" ? "info" : "neutral"}>{DELIVERY_LABELS[item.deliveryMethod]}</Badge>,
+      cell: (item) => <Badge tone={DELIVERY_TONES[item.deliveryMethod]}>{DELIVERY_LABELS[item.deliveryMethod]}</Badge>,
       sortValue: (item) => DELIVERY_LABELS[item.deliveryMethod],
       width: "104px",
     },
     {
       id: "status",
       header: "작업상태",
-      cell: (item) => <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
+      cell: (item) => {
+        if (item.workStatus !== "received") return <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>;
+        return <Badge
+          tone={workStatusTone(item.workStatus)}
+          onClick={(event) => {
+            event.stopPropagation();
+            void updateWork(item, { workStatus: "confirmed" }, `${workStatusLabel("confirmed")} 상태로 변경했습니다.`);
+          }}
+        >
+          {WORK_STATUS_LABELS[item.workStatus]}
+        </Badge>;
+      },
       sortValue: (item) => item.workStatus,
       width: "94px",
     },
     {
       id: "payment",
       header: "결제",
-      cell: (item) => <><Badge tone={paymentStatusTone(item.paymentStatus)}>{PAYMENT_LABELS[item.paymentStatus]}</Badge><small>{won(item.paidAmount)} / {won(item.totalAmount)}</small></>,
-      width: "118px",
-      cellLayout: "stacked",
+      cell: (item) => <Badge tone={paymentStatusTone(item.paymentStatus)}>{PAYMENT_STATUS_LABELS[item.paymentStatus]}</Badge>,
+      width: "92px",
     },
     {
       id: "actions",
@@ -638,29 +649,13 @@ export default function SalesApp() {
           variant={item.customerArrivedAt ? "ghost" : "primary"}
           onClick={(event) => {
             event.stopPropagation();
-            void updateWork(item, { customerArrivedAt: item.customerArrivedAt ? null : true }, item.customerArrivedAt ? "고객 도착 기록을 취소했습니다." : "고객 도착을 기록했습니다.");
+            void updateWork(item, { customerArrivedAt: item.customerArrivedAt ? null : true }, item.customerArrivedAt ? "주문 도착 기록을 취소했습니다." : "주문 도착을 기록했습니다.");
           }}
         >
-          {item.customerArrivedAt ? "도착 취소" : "고객 도착"}
+          {item.customerArrivedAt ? "도착 취소" : "주문 도착"}
         </Button>
-        {item.workStatus === "received" ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={(event) => {
-              event.stopPropagation();
-              void updateWork(
-                item,
-                { workStatus: "confirmed" },
-                `${workStatusLabel("confirmed")} 상태로 변경했습니다.`,
-              );
-            }}
-          >
-            {workStatusLabel("confirmed")}
-          </Button>
-        ) : null}
       </div>,
-      width: "268px",
+      width: "100px",
     },
   ];
 
@@ -710,7 +705,7 @@ export default function SalesApp() {
           }}
           items={[
             { id: "work", label: "작업", count: workItems.length },
-            { id: "customers", label: "미수·주문", count: customerData?.customers.length },
+            { id: "customers", label: "주문", count: customerData?.customers.length },
           ]}
         />
 
@@ -910,7 +905,7 @@ function BulkActions({
         </div>
         <div className="sales-work-table__bulk-action sales-work-table__bulk-action--payment" role="group" aria-label="결제 일괄 변경">
           <FieldSelect id="sales-bulk-payment-status" label="결제 상태" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)}>
-            {Object.entries(PAYMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </FieldSelect>
           <FieldInput id="sales-bulk-paid-amount" label="결제 금액" type="number" min="0" step="1" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} />
           <Button size="sm" variant="ghost" disabled={!Number.isInteger(Number(paidAmount)) || Number(paidAmount) < 0} onClick={() => void onRun({ action: "payment", paymentStatus, paidAmount: Number(paidAmount) }, "결제 정보를 일괄 변경했습니다.")}>결제 변경</Button>
@@ -948,7 +943,7 @@ function CustomerTable({
   if (!customers.length) return <section className="sales-work-table__customer-table"><p className="sales-work-table__empty">조건에 맞는 주문자와 주문이 없습니다.</p></section>;
 
   return (
-    <section className="sales-work-table__customer-table" aria-label="미수 및 주문 목록">
+    <section className="sales-work-table__customer-table" aria-label="주문 목록">
       {customers.map((customer) => {
         const customerOpen = expandedCustomers.includes(customer.id);
         return (
@@ -956,7 +951,7 @@ function CustomerTable({
             <button className="sales-work-table__customer-row" type="button" onClick={() => onToggleCustomer(customer.id)} aria-expanded={customerOpen}>
               <span><b>{customer.buyerName}</b><small>{customer.buyerPhone}</small></span>
               <span>주문 {customer.orders.length}건</span>
-              <strong className={customer.balance > 0 ? "sales-work-table__balance" : undefined}>{customer.balance > 0 ? `미수 ${won(customer.balance)}` : "미수 없음"}</strong>
+              <strong className={customer.balance > 0 ? "sales-work-table__balance" : undefined}>{customer.balance > 0 ? `주문 ${won(customer.balance)}` : "주문 없음"}</strong>
               <span>{customerOpen ? "접기" : "펼치기"}</span>
             </button>
             {customerOpen ? (
@@ -968,7 +963,7 @@ function CustomerTable({
                       <header>
                         <button type="button" onClick={() => onToggleOrder(order.id)} aria-expanded={orderOpen}>
                           <b>{order.orderNo}</b>
-                          <span>{PAYMENT_LABELS[order.paymentStatus]} · {won(order.paidAmount)} / {won(order.totalAmount)}</span>
+                          <span>{PAYMENT_STATUS_LABELS[order.paymentStatus]} · {won(order.paidAmount)} / {won(order.totalAmount)}</span>
                           <span>{orderOpen ? "작업 접기" : "작업 펼치기"}</span>
                         </button>
                         <Button size="sm" variant="ghost" onClick={() => onEditOrder(order, customer.buyerName, customer.buyerPhone)}>주문 수정</Button>
@@ -1062,7 +1057,7 @@ function WorkItemEditor({
     <Modal
       open
       title="작업 행 수정"
-      description={`${item.orderNo} · ${item.buyerName} · ${item.buyerPhone}`}
+      description={`${item.orderNo} · ${item.buyerName} · ${item.buyerPhone} · 결제 ${won(item.paidAmount)} / 주문 ${won(item.totalAmount)}`}
       onClose={onClose}
       footer={<>
         <Button variant="ghost" style={{ marginRight: "auto", borderColor: "#a42f28", color: "#a42f28" }} onClick={onDelete}>삭제</Button>
@@ -1357,7 +1352,7 @@ function PaymentEditor({
       <form id="sales-payment-editor" className="sales-work-table__payment-editor" onSubmit={submit}>
         <p>현재 결제 금액 <strong>{won(order.paidAmount)}</strong></p>
         <FieldSelect id="sales-payment-status" label="결제 상태" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)}>
-          {Object.entries(PAYMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </FieldSelect>
         <FieldInput id="sales-paid-amount" label="결제 금액" type="number" min="0" step="1" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} hint="주문 금액보다 큰 금액도 운영자가 기록할 수 있습니다." />
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
