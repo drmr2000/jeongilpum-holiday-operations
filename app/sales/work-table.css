@@ -19,49 +19,75 @@
 }
 
 .sales-work-table__dashboard {
-  display: contents;
-}
-
-.sales-stage-flow {
   display: flex;
   flex-wrap: wrap;
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  border: 1px solid #d9d1c4;
-  border-radius: var(--radius-md);
-  background: #fff;
-}
-
-.sales-stage-flow__step {
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 32px;
-  padding: 5px 12px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 4px;
+  min-height: 40px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
 }
 
-.sales-stage-flow__step span {
-  color: var(--muted);
+.sales-work-table__filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.sales-work-table__filter-button {
+  display: inline-flex;
+  min-height: 30px;
+  padding: 4px 8px;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
   font-size: var(--text-sm);
+  font-weight: var(--weight-body);
+  line-height: var(--leading-tight);
+  cursor: pointer;
 }
 
-.sales-stage-flow__step b {
+.sales-work-table__filter-button span {
+  color: var(--muted);
+}
+
+.sales-work-table__filter-button b {
   color: var(--wine);
-  font-size: var(--text-md);
   font-weight: var(--weight-strong);
 }
 
-.sales-stage-flow__step + .sales-stage-flow__step::before {
-  content: "›";
-  position: absolute;
-  left: 0;
-  transform: translateX(-50%);
-  color: var(--muted);
-  font-size: var(--text-sm);
+.sales-work-table__filter-button:hover {
+  border-color: var(--line);
+  background: var(--badge-neutral-background);
+}
+
+.sales-work-table__filter-button[aria-pressed="true"] {
+  border-color: var(--wine);
+  background: var(--badge-wine-background);
+  color: var(--wine);
+}
+
+.sales-work-table__filter-button[aria-pressed="true"] span {
+  color: var(--wine);
+}
+
+.sales-work-table__filter-button:focus-visible {
+  outline: 2px solid var(--wine);
+  outline-offset: 2px;
+}
+
+.sales-work-table__filter-divider {
+  width: 1px;
+  height: 20px;
+  margin-inline: 2px;
+  background: var(--line);
 }
 
 .sales-work-table__section,

@@ -18,7 +18,6 @@ export {
 } from "./Field";
 export { Modal, type ModalProps } from "./Modal";
 export { SectionTitle, type SectionTitleLevel, type SectionTitleProps } from "./SectionTitle";
-export { StatTiles, type StatTile, type StatTileSubtotal, type StatTilesProps } from "./StatTiles";
 export { Tabs, type TabItem, type TabsProps } from "./Tabs";
 export { Toolbar, type ToolbarProps, type ToolbarSearch } from "./Toolbar";
 export {

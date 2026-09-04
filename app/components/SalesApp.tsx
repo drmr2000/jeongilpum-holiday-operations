@@ -11,7 +11,6 @@ import {
   FieldSelect,
   FieldTextarea,
   Modal,
-  StatTiles,
   Tabs,
   Toolbar,
   useResource,
@@ -670,31 +669,49 @@ export default function SalesApp() {
       />
 
       <main className="sales-work-table__main">
-        <div className="sales-work-table__dashboard">
-          <StatTiles
-            ariaLabel="오늘 수령방법별 작업 수량"
-            tiles={[
-              {
-                id: "total",
-                label: "전체",
-                value: dashboardTotals.onsite_sale + dashboardTotals.onsite_reservation + dashboardTotals.delivery,
-                subtotals: [
-                  { label: DELIVERY_LABELS.onsite_sale, value: dashboardTotals.onsite_sale },
-                  { label: DELIVERY_LABELS.onsite_reservation, value: dashboardTotals.onsite_reservation },
-                  { label: DELIVERY_LABELS.delivery, value: dashboardTotals.delivery },
-                ],
-              },
-            ]}
-          />
-          <ol className="sales-stage-flow" aria-label="작업 단계별 진행">
+        <section className="sales-work-table__dashboard" aria-label="작업 수량 필터">
+          <div className="sales-work-table__filter-group">
+            <button
+              type="button"
+              className="sales-work-table__filter-button"
+              aria-pressed={!workStatus && !deliveryMethod}
+              onClick={() => {
+                setWorkStatus("");
+                setDeliveryMethod("");
+              }}
+            >
+              <span>전체</span>
+              <b>{dashboardTotals.onsite_sale + dashboardTotals.onsite_reservation + dashboardTotals.delivery}</b>
+            </button>
+            {(["onsite_sale", "onsite_reservation", "delivery"] as const).map((method) => (
+              <button
+                key={method}
+                type="button"
+                className="sales-work-table__filter-button"
+                aria-pressed={deliveryMethod === method}
+                onClick={() => setDeliveryMethod(deliveryMethod === method ? "" : method)}
+              >
+                <span>{DELIVERY_LABELS[method]}</span>
+                <b>{dashboardTotals[method]}</b>
+              </button>
+            ))}
+          </div>
+          <span className="sales-work-table__filter-divider" aria-hidden="true" />
+          <div className="sales-work-table__filter-group">
             {PIPELINE_WORK_STATUSES.map((status) => (
-              <li key={status} className="sales-stage-flow__step">
+              <button
+                key={status}
+                type="button"
+                className="sales-work-table__filter-button"
+                aria-pressed={workStatus === status}
+                onClick={() => setWorkStatus(workStatus === status ? "" : status)}
+              >
                 <span>{WORK_STATUS_LABELS[status]}</span>
                 <b>{stageTotals[status]}</b>
-              </li>
+              </button>
             ))}
-          </ol>
-        </div>
+          </div>
+        </section>
 
         <Tabs
           ariaLabel="판매장 화면 선택"
