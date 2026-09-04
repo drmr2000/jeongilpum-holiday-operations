@@ -37,8 +37,25 @@
   gap: 2px;
 }
 
+.sales-work-table__filter-divider + .sales-work-table__filter-group {
+  gap: 10px;
+}
+
+.sales-work-table__filter-divider + .sales-work-table__filter-group .sales-work-table__filter-button + .sales-work-table__filter-button::before {
+  content: "›" / "";
+  position: absolute;
+  top: 50%;
+  left: -5px;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  pointer-events: none;
+  user-select: none;
+  speak: never;
+}
+
 .sales-work-table__filter-button {
   display: inline-flex;
+  position: relative;
   min-height: 30px;
   padding: 4px 8px;
   align-items: center;

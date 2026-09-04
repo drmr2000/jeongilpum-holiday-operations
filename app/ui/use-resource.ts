@@ -12,6 +12,7 @@ export type ResourceError = Error & {
 
 export type ResourceState<Data> = {
   data: Data | null;
+  dataIsCurrent: boolean;
   error: ResourceError | null;
   loading: boolean;
   reload: (options?: ResourceReloadOptions) => Promise<Data | undefined>;
@@ -108,9 +109,12 @@ export function useResource<Data>(
     };
   }, [pollInterval, reload, url]);
 
+  const dataIsCurrent = url !== null && dataUrl === url;
+
   return {
-    data: dataUrl === url ? data : null,
-    error: errorUrl === url ? error : null,
+    data: url === null ? null : data,
+    dataIsCurrent,
+    error: url !== null && errorUrl === url ? error : null,
     loading,
     reload,
   };
