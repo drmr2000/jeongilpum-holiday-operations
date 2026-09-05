@@ -79,7 +79,7 @@
 .ui-field {
   display: grid;
   align-content: start;
-  align-self: start;
+  align-self: var(--ui-field-align-self, start);
   gap: 6px;
   color: var(--ink);
   font-size: var(--text-sm);
@@ -594,6 +594,7 @@
 }
 
 .ui-toolbar {
+  --ui-field-align-self: center;
   min-height: var(--ui-control-height);
   display: flex;
   align-items: center;
@@ -658,10 +659,7 @@
   width: 156px;
 }
 
-.ui-toolbar .ui-button,
-.ui-toolbar .ui-field__control:not(.ui-field__control--textarea),
-.ui-toolbar .ui-field__native-date,
-.ui-toolbar__search input {
+.ui-toolbar .ui-button {
   height: var(--ui-control-height);
   min-height: var(--ui-control-height);
   line-height: var(--leading-tight);
