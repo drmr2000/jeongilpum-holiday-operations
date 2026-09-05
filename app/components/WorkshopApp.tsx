@@ -67,27 +67,36 @@ const productTotalColumns: DataTableColumn<ProductTotal>[] = [
     id: "product",
     header: "상품",
     cell: (product) => product.productName,
+    exportValue: (product) => product.productName,
     rowHeader: true,
   },
   {
     id: "total",
     header: "전체",
     cell: (product) => `${product.totalQuantity.toLocaleString()}개`,
+    exportValue: (product) => `${product.totalQuantity.toLocaleString()}개`,
   },
   {
     id: "completed",
     header: "완료",
     cell: (product) => `${product.completedQuantity.toLocaleString()}개`,
+    exportValue: (product) => `${product.completedQuantity.toLocaleString()}개`,
   },
   {
     id: "pending",
     header: "남은 작업",
     cell: (product) => `${product.pendingQuantity.toLocaleString()}개`,
+    exportValue: (product) => `${product.pendingQuantity.toLocaleString()}개`,
   },
   {
     id: "daily-limit",
     header: "일일 한도",
     cell: (product) => (
+      product.dailyLimit === null
+        ? "미설정"
+        : `${product.dailyLimit.toLocaleString()}개${product.totalQuantity > product.dailyLimit ? " 초과" : ""}`
+    ),
+    exportValue: (product) => (
       product.dailyLimit === null
         ? "미설정"
         : `${product.dailyLimit.toLocaleString()}개${product.totalQuantity > product.dailyLimit ? " 초과" : ""}`
@@ -285,6 +294,7 @@ export default function WorkshopApp() {
       );
     },
     sortValue: (item) => item.workStatus,
+    exportValue: (item) => workStatusLabel(item.workStatus),
     width: "164px",
   };
 
@@ -395,6 +405,7 @@ export default function WorkshopApp() {
               rows={products}
               columns={productTotalColumns}
               getRowId={(product) => product.productId}
+              exportName="작업장-상품별-작업량"
             />
           ) : <p className="workshop-empty">집계할 상품 작업이 없습니다.</p>}
         </section>
@@ -419,6 +430,7 @@ export default function WorkshopApp() {
             rows={activeRows}
             columns={activeColumns}
             getRowId={(item) => item.id}
+            exportName={tab === "onsite" ? "작업장-현장-작업" : "작업장-택배-작업"}
             onRowClick={openDetail}
             groups={workItemGroups(activeRows, tab === "onsite")}
             selectedIds={selectedIds}

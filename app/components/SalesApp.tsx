@@ -609,6 +609,7 @@ export default function SalesApp() {
       header: "수령일시",
       cell: (item) => <><b>{item.dueAt.slice(0, 10)}</b><small>{item.deliveryMethod === "delivery" ? "발송 예정" : item.dueAt.slice(11, 16)}</small></>,
       sortValue: (item) => item.dueAt,
+      exportValue: (item) => `${item.dueAt.slice(0, 10)} ${item.deliveryMethod === "delivery" ? "발송 예정" : item.dueAt.slice(11, 16)}`,
       width: "118px",
       cellLayout: "stacked",
     },
@@ -617,6 +618,7 @@ export default function SalesApp() {
       header: "주문자",
       cell: (item) => <><b>{item.buyerName}</b><small>{item.buyerPhone} · {item.orderNo}</small></>,
       sortValue: (item) => item.buyerName,
+      exportValue: (item) => `${item.buyerName} ${item.buyerPhone} · ${item.orderNo}`,
       width: "180px",
       cellLayout: "stacked",
     },
@@ -625,6 +627,7 @@ export default function SalesApp() {
       header: "상품",
       cell: (item) => <><b>{item.productName}</b>{item.productDailyLimit !== null && item.productScheduledQuantity > item.productDailyLimit ? <small className="sales-work-table__overage">일일 수량 초과 {item.productScheduledQuantity}/{item.productDailyLimit}</small> : null}</>,
       sortValue: (item) => item.productName,
+      exportValue: (item) => `${item.productName}${item.productDailyLimit !== null && item.productScheduledQuantity > item.productDailyLimit ? ` 일일 수량 초과 ${item.productScheduledQuantity}/${item.productDailyLimit}` : ""}`,
       cellLayout: "stacked",
       multiline: true,
     },
@@ -633,6 +636,7 @@ export default function SalesApp() {
       header: "수량",
       cell: (item) => <><b>{item.quantity}개</b><small>{won(item.lineTotal)}</small></>,
       sortValue: (item) => item.quantity,
+      exportValue: (item) => `${item.quantity}개 ${won(item.lineTotal)}`,
       align: "right",
       width: "90px",
       cellLayout: "stacked",
@@ -662,12 +666,14 @@ export default function SalesApp() {
         </div>
       ) : <Badge tone={workStatusTone(item.workStatus)}>{WORK_STATUS_LABELS[item.workStatus]}</Badge>,
       sortValue: (item) => item.workStatus,
+      exportValue: (item) => item.workStatus === "received" ? "작업 준비" : WORK_STATUS_LABELS[item.workStatus],
       width: "96px",
     },
     {
       id: "payment",
       header: "결제",
       cell: (item) => <Badge tone={paymentStatusTone(item.paymentStatus)}>{PAYMENT_STATUS_LABELS[item.paymentStatus]}</Badge>,
+      exportValue: (item) => PAYMENT_STATUS_LABELS[item.paymentStatus],
       width: "92px",
     },
     {
@@ -685,6 +691,7 @@ export default function SalesApp() {
           {item.customerArrivedAt ? "도착 취소" : "주문 도착"}
         </Button>
       </div>,
+      exportValue: (item) => item.customerArrivedAt ? "도착 취소" : "주문 도착",
       width: "96px",
     },
   ];
@@ -694,6 +701,7 @@ export default function SalesApp() {
       header: "주문 일시",
       cell: (order) => <time dateTime={order.createdAt}>{formatWorkItemDateTime(order.createdAt)}</time>,
       sortValue: (order) => order.createdAt,
+      exportValue: (order) => formatWorkItemDateTime(order.createdAt),
       width: "174px",
     },
     {
@@ -708,6 +716,7 @@ export default function SalesApp() {
       header: "주문자",
       cell: (order) => <><b>{order.buyerName}</b><small>{order.buyerPhone}</small></>,
       sortValue: (order) => order.buyerName,
+      exportValue: (order) => `${order.buyerName} ${order.buyerPhone}`,
       width: "156px",
       rowHeader: true,
       cellLayout: "stacked",
@@ -719,6 +728,9 @@ export default function SalesApp() {
         <><b>{order.workItems.map((item) => `${item.productName} ${item.quantity}개`).join(", ")}</b><small>{order.workItems.length}개 작업</small></>
       ) : <span>작업 미등록</span>,
       sortValue: (order) => order.workItems.map((item) => item.productName).join(" "),
+      exportValue: (order) => order.workItems.length
+        ? `${order.workItems.map((item) => `${item.productName} ${item.quantity}개`).join(", ")} ${order.workItems.length}개 작업`
+        : "작업 미등록",
       cellLayout: "stacked",
       multiline: true,
     },
@@ -727,6 +739,7 @@ export default function SalesApp() {
       header: "결제",
       cell: (order) => <Badge tone={paymentStatusTone(order.paymentStatus)}>{PAYMENT_STATUS_LABELS[order.paymentStatus]}</Badge>,
       sortValue: (order) => order.paymentStatus,
+      exportValue: (order) => PAYMENT_STATUS_LABELS[order.paymentStatus],
       width: "96px",
     },
     {
@@ -734,6 +747,7 @@ export default function SalesApp() {
       header: "결제 금액",
       cell: (order) => <><b>{won(order.paidAmount)} / {won(order.totalAmount)}</b><small className={order.balance > 0 ? "sales-work-table__balance" : undefined}>{order.balance > 0 ? `미수 ${won(order.balance)}` : "미수 없음"}</small></>,
       sortValue: (order) => order.balance,
+      exportValue: (order) => `${won(order.paidAmount)} / ${won(order.totalAmount)} ${order.balance > 0 ? `미수 ${won(order.balance)}` : "미수 없음"}`,
       align: "right",
       width: "168px",
       cellLayout: "stacked",
@@ -746,6 +760,7 @@ export default function SalesApp() {
         <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); setNewWorkOrder(order); }}>작업 추가</Button>
         <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); setPaymentOrder(order); }}>결제 변경</Button>
       </div>,
+      exportValue: () => "주문 수정, 작업 추가, 결제 변경",
       width: "268px",
     },
   ];
@@ -905,6 +920,7 @@ export default function SalesApp() {
               rows={filteredWorkItems}
               columns={columns}
               getRowId={(item) => item.id}
+              exportName="판매장-작업-목록"
               rowClassName={workItemRowClass}
               onRowClick={setSelectedWorkItem}
               selectedIds={selectedIds}
@@ -919,6 +935,7 @@ export default function SalesApp() {
               rows={customerOrders}
               columns={orderColumns}
               getRowId={(order) => order.id}
+              exportName="판매장-주문-목록"
               rowClassName={outstandingPaymentRowClass}
               onRowClick={(order) => setSelectedOrder({ order, buyerName: order.buyerName, buyerPhone: order.buyerPhone })}
               selectedIds={selectedOrderIds}

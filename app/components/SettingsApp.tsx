@@ -710,6 +710,7 @@ export default function SettingsApp() {
             : <ImageOff size={16} aria-hidden="true" />}
         </span>;
       },
+      exportValue: (product) => product.imageUrl ?? "",
       width: "64px",
       align: "center",
     },
@@ -717,12 +718,14 @@ export default function SettingsApp() {
       id: "name",
       header: "이름",
       cell: (product) => <span className="settings-product-name"><b>{product.name}</b>{product.subtitle ? <small>{product.subtitle}</small> : null}</span>,
+      exportValue: (product) => [product.name, product.subtitle].filter(Boolean).join(" "),
       width: "250px",
     },
     {
       id: "price",
       header: "가격",
       cell: (product) => won(product.price),
+      exportValue: (product) => won(product.price),
       width: "120px",
       align: "right",
     },
@@ -733,6 +736,7 @@ export default function SettingsApp() {
         const status = dailyLimitStatus(product.dailyLimit);
         return <Badge tone={DAILY_LIMIT_TONES[status]}>{dailyLimitLabel(product.dailyLimit)}</Badge>;
       },
+      exportValue: (product) => dailyLimitLabel(product.dailyLimit),
       width: "120px",
       align: "center",
     },
@@ -743,6 +747,7 @@ export default function SettingsApp() {
         const status = remainingStatus(product.dailyLimit, product.reservedQuantity);
         return <Badge tone={REMAINING_TONES[status]}>{remainingLabel(product.dailyLimit, product.reservedQuantity)}</Badge>;
       },
+      exportValue: (product) => remainingLabel(product.dailyLimit, product.reservedQuantity),
       width: "105px",
       align: "center",
     },
@@ -753,6 +758,7 @@ export default function SettingsApp() {
         const status: VisibilityStatus = product.active ? "visible" : "hidden";
         return <Badge tone={VISIBILITY_TONES[status]}>{VISIBILITY_LABELS[status]}</Badge>;
       },
+      exportValue: (product) => VISIBILITY_LABELS[product.active ? "visible" : "hidden"],
       width: "90px",
       align: "center",
     },
@@ -778,11 +784,13 @@ export default function SettingsApp() {
           />
         );
       },
+      exportValue: (category) => categoryDrafts[category.id] ?? category.name,
     },
     {
       id: "product-count",
       header: "상품",
       cell: (category) => <span style={{ color: "var(--muted)" }}>{category.productCount}개</span>,
+      exportValue: (category) => `${category.productCount}개`,
       width: "84px",
     },
     {
@@ -797,6 +805,7 @@ export default function SettingsApp() {
           </span>
         );
       },
+      exportValue: () => "이름 저장, 삭제",
       width: "210px",
       align: "right",
     },
@@ -895,6 +904,7 @@ export default function SettingsApp() {
             };
           })}
           getRowId={(product) => product.id}
+          exportName="상품-목록"
           onRowClick={openEditor}
           onRowDragOver={(product, event) => {
             if (draggedProductId && draggedProductId !== product.id) event.preventDefault();
@@ -1046,6 +1056,7 @@ export default function SettingsApp() {
           rows={categories}
           columns={categoryColumns}
           getRowId={(category) => category.id}
+          exportName="카테고리-목록"
           emptyMessage="등록된 카테고리가 없습니다."
         />
       </div>

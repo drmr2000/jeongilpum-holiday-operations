@@ -1,8 +1,11 @@
 "use client";
 
-import { ChevronDown, ChevronUp, ChevronsUpDown, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, GripVertical } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
+import { createCsv, datedCsvFilename, type CsvCellValue } from "../lib/csv";
+import { Button } from "./Button";
+import { Toolbar } from "./Toolbar";
 
 export type DataTableSortValue = string | number | Date | null | undefined;
 
@@ -11,6 +14,8 @@ export type DataTableColumn<Row> = {
   header: ReactNode;
   cell: (row: Row) => ReactNode;
   sortValue?: (row: Row) => DataTableSortValue;
+  exportValue?: (row: Row) => CsvCellValue;
+  exportHeader?: string;
   width?: string;
   align?: "left" | "center" | "right";
   rowHeader?: boolean;
@@ -70,6 +75,7 @@ type DataTableFlatProps<Row> = {
   initialSort?: { columnId: string; direction?: "asc" | "desc" };
   emptyMessage?: ReactNode;
   ariaLabel?: string;
+  exportName?: string;
 };
 
 type DataTableHierarchyProps = {
@@ -110,6 +116,10 @@ function dataTableCellClassName({ multiline, cellLayout, className }: DataTableC
   ].filter(Boolean).join(" ");
 }
 
+function exportHeader<Row>(column: DataTableColumn<Row>) {
+  return column.exportHeader ?? (typeof column.header === "string" ? column.header : column.id);
+}
+
 function FlatDataTable<Row>({
   rows,
   columns,
@@ -131,6 +141,7 @@ function FlatDataTable<Row>({
   initialSort,
   emptyMessage = "표시할 항목이 없습니다.",
   ariaLabel,
+  exportName,
 }: DataTableFlatProps<Row>) {
   const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState>(
@@ -158,6 +169,21 @@ function FlatDataTable<Row>({
       return sort.direction === "asc" ? value : -value;
     });
   }, [columns, effectiveRows, groups, sort]);
+  const exportRows = groups ? effectiveRows : sortedRows;
+
+  const downloadCsv = () => {
+    if (!exportName) return;
+    const content = createCsv(
+      columns.map(exportHeader),
+      exportRows.map((row) => columns.map((column) => (column.exportValue ?? column.sortValue)?.(row))),
+    );
+    const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = datedCsvFilename(exportName);
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const updateSelectedIds = (nextIds: string[]) => {
     if (selectedIds === undefined) setInternalSelectedIds(nextIds);
@@ -252,8 +278,18 @@ function FlatDataTable<Row>({
   };
 
   return (
-    <div className="ui-data-table__scroll">
-      <table className="ui-data-table" aria-label={ariaLabel}>
+    <>
+      {exportName ? (
+        <Toolbar
+          actions={(
+            <Button variant="ghost" size="sm" leadingIcon={<Download size={16} />} onClick={downloadCsv}>
+              엑셀 다운로드
+            </Button>
+          )}
+        />
+      ) : null}
+      <div className="ui-data-table__scroll">
+        <table className="ui-data-table" aria-label={ariaLabel}>
         <colgroup>
           {selectionEnabled ? <col style={{ width: selectionColumnWidth }} /> : null}
           {columns.map((column) => <col key={column.id} style={column.width ? { width: column.width } : undefined} />)}
@@ -310,8 +346,9 @@ function FlatDataTable<Row>({
             </tr>
           ) : null}
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </>
   );
 }
 

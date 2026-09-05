@@ -42,6 +42,7 @@ const columns: DataTableColumn<WorkItemHistoryEvent>[] = [
     header: "시각",
     cell: (event) => <time dateTime={event.createdAt}>{formatWorkItemDateTime(event.createdAt)}</time>,
     sortValue: (event) => event.createdAt,
+    exportValue: (event) => formatWorkItemDateTime(event.createdAt),
     width: "184px",
   },
   {
@@ -49,6 +50,7 @@ const columns: DataTableColumn<WorkItemHistoryEvent>[] = [
     header: "변경 내용",
     cell: historyDescription,
     sortValue: (event) => event.createdAt,
+    exportValue: historyDescription,
     rowHeader: true,
     multiline: true,
   },
@@ -77,6 +79,7 @@ export default function WorkItemHistory({
             rows={events}
             columns={columns}
             getRowId={(event) => event.id}
+            exportName="작업-이력"
             initialSort={{ columnId: "createdAt", direction: "desc" }}
             emptyMessage="표시할 작업 이력이 없습니다."
           />
