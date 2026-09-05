@@ -10,13 +10,24 @@ type WorkItemRow = {
   order_no: string;
   product_id: string;
   product_name_snapshot: string;
+  unit_price_snapshot: number;
   quantity: number;
   delivery_method: DeliveryMethod;
   due_at: string;
   work_status: WorkStatus;
   note: string;
   road_addr: string | null;
+  road_addr_reference: string | null;
+  jibun_addr: string | null;
   detail_addr: string | null;
+  recipient_name: string | null;
+  recipient_phone: string | null;
+  postal_code: string | null;
+  customization_json: string | null;
+  buyer_name: string;
+  buyer_phone: string;
+  product_daily_limit: number | null;
+  product_scheduled_quantity: number;
   version: number;
 };
 
@@ -43,10 +54,14 @@ const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 export const TODAY_ONSITE_WORK_ITEMS_SQL = `
   SELECT
-    w.id,w.order_id,o.order_no,w.product_id,w.product_name_snapshot,w.quantity,
-    w.delivery_method,w.due_at,w.work_status,w.note,w.road_addr,w.detail_addr,w.version
+    w.id,w.order_id,o.order_no,o.buyer_name,o.buyer_phone,w.product_id,w.product_name_snapshot,
+    w.unit_price_snapshot,w.quantity,w.delivery_method,w.due_at,w.work_status,w.note,
+    w.recipient_name,w.recipient_phone,w.postal_code,w.road_addr,w.road_addr_reference,w.jibun_addr,
+    w.detail_addr,w.customization_json,w.version,p.daily_limit AS product_daily_limit,
+    COALESCE((SELECT SUM(reserved.quantity) FROM work_items reserved WHERE reserved.product_id=w.product_id AND substr(reserved.due_at,1,10)=substr(w.due_at,1,10) AND reserved.work_status!='cancelled'),0) AS product_scheduled_quantity
   FROM work_items w
   JOIN orders o ON o.id=w.order_id
+  JOIN products p ON p.id=w.product_id
   WHERE w.delivery_method='onsite_reservation'
     AND substr(w.due_at,1,10)=?
     AND w.work_status!='cancelled'
@@ -56,10 +71,14 @@ export const TODAY_ONSITE_WORK_ITEMS_SQL = `
 
 export const TODAY_DELIVERY_WORK_ITEMS_SQL = `
   SELECT
-    w.id,w.order_id,o.order_no,w.product_id,w.product_name_snapshot,w.quantity,
-    w.delivery_method,w.due_at,w.work_status,w.note,w.road_addr,w.detail_addr,w.version
+    w.id,w.order_id,o.order_no,o.buyer_name,o.buyer_phone,w.product_id,w.product_name_snapshot,
+    w.unit_price_snapshot,w.quantity,w.delivery_method,w.due_at,w.work_status,w.note,
+    w.recipient_name,w.recipient_phone,w.postal_code,w.road_addr,w.road_addr_reference,w.jibun_addr,
+    w.detail_addr,w.customization_json,w.version,p.daily_limit AS product_daily_limit,
+    COALESCE((SELECT SUM(reserved.quantity) FROM work_items reserved WHERE reserved.product_id=w.product_id AND substr(reserved.due_at,1,10)=substr(w.due_at,1,10) AND reserved.work_status!='cancelled'),0) AS product_scheduled_quantity
   FROM work_items w
   JOIN orders o ON o.id=w.order_id
+  JOIN products p ON p.id=w.product_id
   WHERE w.delivery_method='delivery'
     AND substr(w.due_at,1,10)=?
     AND w.work_status!='cancelled'
@@ -98,11 +117,24 @@ function toWorkItem(row: WorkItemRow, events: EventRow[]) {
     orderNo: row.order_no,
     productId: row.product_id,
     productName: row.product_name_snapshot,
+    unitPrice: Number(row.unit_price_snapshot),
     quantity: Number(row.quantity),
     deliveryMethod: row.delivery_method,
     dueAt: row.due_at,
     workStatus: row.work_status,
+    recipientName: row.recipient_name,
+    recipientPhone: row.recipient_phone,
+    postalCode: row.postal_code,
+    roadAddr: row.road_addr,
+    roadAddrReference: row.road_addr_reference,
+    jibunAddr: row.jibun_addr,
+    detailAddr: row.detail_addr,
+    customizationJson: row.customization_json,
     note: row.note,
+    buyerName: row.buyer_name,
+    buyerPhone: row.buyer_phone,
+    productDailyLimit: row.product_daily_limit === null ? null : Number(row.product_daily_limit),
+    productScheduledQuantity: Number(row.product_scheduled_quantity),
     address: row.delivery_method === "delivery"
       ? [row.road_addr, row.detail_addr].filter(Boolean).join(" ")
       : "",

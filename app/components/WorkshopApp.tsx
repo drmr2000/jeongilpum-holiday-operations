@@ -25,23 +25,17 @@ import {
   workStatusLabel,
   type WorkStatus,
 } from "../lib/work-status";
-import WorkItemHistory from "./WorkItemHistory";
+import WorkItemEditor, {
+  toWorkItemChanges,
+  type EditableWorkItem,
+  type WorkItemDraft,
+} from "./WorkItemEditor";
 import WorkStatusSelect from "./WorkStatusSelect";
 import "../workshop-flow.css";
 
-type WorkItem = {
-  id: string;
-  orderId: string;
-  orderNo: string;
-  productId: string;
-  productName: string;
-  quantity: number;
+type WorkItem = EditableWorkItem & {
   deliveryMethod: "onsite_reservation" | "delivery";
-  dueAt: string;
-  workStatus: WorkStatus;
-  note: string;
   address: string;
-  version: number;
   events: Array<{
     id: string;
     type: string;
@@ -223,6 +217,57 @@ export default function WorkshopApp() {
     }
   };
 
+  const saveWorkItem = async (item: EditableWorkItem, draft: WorkItemDraft) => {
+    const response = await fetch("/api/work-items", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: item.id,
+        expectedVersion: item.version,
+        changes: toWorkItemChanges(draft),
+      }),
+    });
+    const data = await response.json().catch(() => null) as { error?: string } | null;
+    if (!response.ok) throw new Error(data?.error ?? "작업 행을 저장하지 못했습니다.");
+    setSelected(null);
+    setNotice("작업 행을 저장했습니다.");
+    await reload({ silent: true });
+  };
+
+  const deleteWorkItem = async (item: WorkItem) => {
+    try {
+      const response = await fetch("/api/work-items", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, expectedVersion: item.version }),
+      });
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error ?? "작업 행을 삭제하지 못했습니다.");
+      setSelected(null);
+      setNotice("작업 행을 삭제했습니다.");
+      await reload({ silent: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "작업 행을 삭제하지 못했습니다.");
+    }
+  };
+
+  const duplicateWorkItem = async (item: WorkItem) => {
+    try {
+      const response = await fetch("/api/work-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId: item.id, expectedVersion: item.version }),
+      });
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error ?? "작업 행을 복제하지 못했습니다.");
+      setSelected(null);
+      setNotice("작업 행을 복제했습니다.");
+      await reload({ silent: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "작업 행을 복제하지 못했습니다.");
+    }
+  };
+
   const statusColumn: DataTableColumn<WorkItem> = {
     id: "status",
     header: "작업 상태",
@@ -390,41 +435,17 @@ export default function WorkshopApp() {
         </nav>
       </main>
 
-      <Modal
-        open={Boolean(selected)}
-        title={selected ? `${selected.productName} · ${selected.quantity.toLocaleString()}개` : ""}
-        description={selected ? `${selected.orderNo} · ${selected.deliveryMethod === "delivery" ? "택배" : `${formatTime(selected.dueAt)} 현장 예약`}` : ""}
-        onClose={() => setSelected(null)}
-        footer={(
-          <>
-            <Button variant="ghost" onClick={() => setSelected(null)}>닫기</Button>
-          </>
-        )}
-      >
-        {selected ? (
-          <div className="workshop-detail-content">
-            <div className="workshop-detail-grid">
-              <p><span>수령방법</span><strong>{selected.deliveryMethod === "delivery" ? "택배" : "현장 예약"}</strong></p>
-              <p><span>작업 시각</span><strong>{selected.deliveryMethod === "delivery" ? selected.dueAt.slice(0, 10) : `${selected.dueAt.slice(0, 10)} ${formatTime(selected.dueAt)}`}</strong></p>
-              {selected.deliveryMethod === "delivery" ? <p><span>배송지</span><strong>{selected.address || "주소 미입력"}</strong></p> : null}
-            </div>
-            <section className="workshop-action-summary">
-              <WorkStatusSelect
-                id={`workshop-detail-status-${selected.id}`}
-                label="작업 상태"
-                value={selected.workStatus}
-                disabled={busyIds.includes(selected.id)}
-                onChange={(status) => void updateWorkStatuses([selected], status)}
-              />
-            </section>
-            {selected.note ? <section className="workshop-detail-note"><h3>작업 요청사항</h3><p>{selected.note}</p></section> : null}
-            <WorkItemHistory
-              className="workshop-detail-history"
-              events={selected.events}
-            />
-          </div>
-        ) : null}
-      </Modal>
+      {selected ? (
+        <WorkItemEditor
+          key={`${selected.id}-${selected.version}`}
+          item={selected}
+          description={`${selected.orderNo} · ${selected.buyerName} · ${selected.buyerPhone}`}
+          onClose={() => setSelected(null)}
+          onSave={saveWorkItem}
+          onDelete={() => void deleteWorkItem(selected)}
+          onDuplicate={() => void duplicateWorkItem(selected)}
+        />
+      ) : null}
 
       <Modal
         open={bulkActionModalOpen}
