@@ -9,14 +9,9 @@ export type CategoryRailItem = {
 };
 
 export type CustomOrderDraftItem = {
-  category: string;
   budgetOption: string;
   budgetAmount: number;
-  desiredComposition: string;
-  preferredCut: string;
-  fatPreference: string;
-  packagingRequest: string;
-  otherRequest: string;
+  request: string;
 };
 
 export type Product = {
@@ -88,7 +83,7 @@ export type OrderRecord = KioskOrderReceipt & {
   roadAddrReference: string | null;
   jibunAddr: string | null;
   detailAddr: string | null;
-  customization: CustomOrderDraftItem | null;
+  customization: string | null;
   note: string;
   version: number;
   createdAt: string;

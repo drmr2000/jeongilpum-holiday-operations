@@ -4,14 +4,9 @@ import { OPERATOR_ACTOR, requireOperatorApi } from "../../lib/operator-session";
 import { nextOrderNo, orderNumberPrefix } from "../../lib/order-number";
 
 type CustomItemPayload = {
-  category?: string;
   budgetOption?: string;
   budgetAmount?: number;
-  desiredComposition?: string;
-  preferredCut?: string;
-  fatPreference?: string;
-  packagingRequest?: string;
-  otherRequest?: string;
+  request?: string;
 };
 
 type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
@@ -164,7 +159,6 @@ type PreparedWorkItem = {
 type ManualWorkItemInput = Omit<PreparedWorkItem, "id" | "productName" | "lineTotal">;
 
 const runtimeEnv = env as typeof env & { DB: D1Database };
-const customCategories = new Set(["진공세트", "프리미엄", "O'meat", "LA갈비", "뼈세트"]);
 const fulfillmentTypes = new Set(["onsite", "pickup", "shipping"]);
 const paymentMethods = new Set(["card", "cash", "bank_transfer"]);
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -448,13 +442,8 @@ function scheduleLabel(deliveryMethod: ReceiptRow["delivery_method"], dueAt: str
   return `${koreanDate(dueAt.slice(0, 10))} 발송 예정`;
 }
 
-function parseCustomization(value: string | null) {
-  if (!value) return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
+function customizationText(value: string | null) {
+  return value || null;
 }
 
 function workItemRecord(row: WorkItemRow, events: EventRow[]) {
@@ -486,7 +475,7 @@ function workItemRecord(row: WorkItemRow, events: EventRow[]) {
     roadAddrReference: row.road_addr_reference,
     jibunAddr: row.jibun_addr,
     detailAddr: row.detail_addr,
-    customization: parseCustomization(row.customization_json),
+    customization: customizationText(row.customization_json),
     note: row.note,
     version: row.version,
     createdAt: row.created_at,
@@ -699,7 +688,6 @@ export async function POST(request: Request) {
     const customAmount = Number(custom?.budgetAmount ?? 0);
     const customValid = Boolean(
       custom
-      && customCategories.has(clean(custom.category))
       && clean(custom.budgetOption)
       && Number.isInteger(customAmount)
       && customAmount >= 200_000,
@@ -716,7 +704,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "주문자와 상품 정보를 확인해주세요." }, { status: 400 });
     }
     if (custom && !customValid) {
-      return Response.json({ error: "맞춤주문은 카테고리와 20만원 이상의 예산이 필요합니다." }, { status: 400 });
+      return Response.json({ error: "맞춤주문은 20만원 이상의 예산이 필요합니다." }, { status: 400 });
     }
 
     let actor = "kiosk";
@@ -821,7 +809,7 @@ export async function POST(request: Request) {
     if (customValid && custom) {
       const workItem = buildWorkItem({
         productId: "custom-order",
-        productName: `맞춤주문 · ${clean(custom.category)}`,
+        productName: "맞춤주문",
         unitPrice: customAmount,
         quantity: 1,
         deliveryMethod,
@@ -834,7 +822,7 @@ export async function POST(request: Request) {
         roadAddrReference: fulfillmentType === "shipping" ? clean(payload.roadAddrReference) || null : null,
         jibunAddr: fulfillmentType === "shipping" ? clean(payload.jibunAddr) || null : null,
         detailAddr: fulfillmentType === "shipping" ? detailAddr : null,
-        customizationJson: JSON.stringify(custom),
+        customizationJson: clean(custom.request) || null,
         note: clean(payload.note),
       });
       if (!workItem) return Response.json({ error: "상품 금액과 수량을 확인해주세요." }, { status: 400 });
