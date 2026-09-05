@@ -143,18 +143,30 @@ export async function PATCH(request: Request) {
         throw new RequestError("작업 상태를 확인해주세요.");
       }
       const workStatus = payload.workStatus as WorkStatus;
+      const changed = current.filter((row) => row.work_status !== workStatus);
+      if (!changed.length) {
+        return Response.json({
+          action,
+          affected: 0,
+          workItemVersions: [],
+        });
+      }
+      const changedSelection = changed.map((row) => ({
+        id: row.id,
+        expectedVersion: row.version,
+      }));
       const now = new Date().toISOString();
       const transition = prepareWorkStatusTransition(runtimeEnv.DB, {
         nextStatus: workStatus,
         now,
-        whereSql: `(${selectionPredicate(selection)}) AND ${allSelectionMatches(selection)}`,
-        whereBindings: [...selectionBindings(selection), ...allSelectionBindings(selection)],
+        whereSql: `(${selectionPredicate(changedSelection)}) AND ${allSelectionMatches(changedSelection)}`,
+        whereBindings: [...selectionBindings(changedSelection), ...allSelectionBindings(changedSelection)],
       });
       const idempotencyKey = clean(payload.idempotencyKey) || crypto.randomUUID();
       const eventType = workItemEventType("work_status_changed", idempotencyKey);
       const results = await runtimeEnv.DB.batch([
         transition,
-        ...current.map((row) =>
+        ...changed.map((row) =>
           runtimeEnv.DB.prepare(`
             INSERT INTO work_item_events(id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at)
             SELECT ?,?,?,?, ?,?,?,?
@@ -176,13 +188,13 @@ export async function PATCH(request: Request) {
             row.version + 1,
           )),
       ]);
-      if (results[0].meta.changes !== selection.length) {
+      if (results[0].meta.changes !== changed.length) {
         return Response.json({ error: "다른 화면에서 작업이 변경되었습니다. 새로고침 후 다시 시도해주세요." }, { status: 409 });
       }
       return Response.json({
         action,
-        affected: selection.length,
-        workItemVersions: current.map((row) => ({ id: row.id, version: row.version + 1 })),
+        affected: changed.length,
+        workItemVersions: changed.map((row) => ({ id: row.id, version: row.version + 1 })),
       });
     }
 

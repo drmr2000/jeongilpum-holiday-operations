@@ -35,6 +35,7 @@ import WorkItemHistory, {
   formatWorkItemDateTime,
   type WorkItemHistoryEvent,
 } from "./WorkItemHistory";
+import WorkStatusSelect from "./WorkStatusSelect";
 import "../sales/work-table.css";
 
 type DeliveryMethod = "onsite_sale" | "onsite_reservation" | "delivery";
@@ -1086,9 +1087,7 @@ function BulkActions({
     <div className="sales-work-table__bulk-actions" aria-label="선택 작업 일괄 처리">
       <div className="sales-work-table__bulk-action-groups">
         <div className="sales-work-table__bulk-action" role="group" aria-label="작업 상태 일괄 변경">
-          <FieldSelect id="sales-bulk-work-status" label="작업 상태" value={nextStatus} onChange={(event) => setNextStatus(event.target.value as WorkStatus)}>
-            {Object.entries(WORK_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </FieldSelect>
+          <WorkStatusSelect id="sales-bulk-work-status" label="작업 상태" value={nextStatus} onChange={setNextStatus} />
           <Button size="sm" variant="ghost" onClick={() => void onRun({ action: "status", workStatus: nextStatus }, "작업 상태를 일괄 변경했습니다.")}>상태 변경</Button>
         </div>
         <div className="sales-work-table__bulk-action" role="group" aria-label="수령일시 일괄 변경">
@@ -1385,9 +1384,7 @@ function WorkItemFields({
           {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </FieldSelect>
         <FieldInput id={`${idPrefix}-due-at`} label="수령일시" type="datetime-local" value={draft.dueAt} onChange={(event) => onChange("dueAt", event.target.value)} />
-        <FieldSelect id={`${idPrefix}-status`} label="작업 상태" value={draft.workStatus} onChange={(event) => onChange("workStatus", event.target.value as WorkStatus)}>
-          {WORK_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{WORK_STATUS_LABELS[status]}</option>)}
-        </FieldSelect>
+        <WorkStatusSelect id={`${idPrefix}-status`} label="작업 상태" value={draft.workStatus} onChange={(status) => onChange("workStatus", status)} />
         <FieldInput id={`${idPrefix}-recipient-name`} label="수령자 성함" value={draft.recipientName} onChange={(event) => onChange("recipientName", event.target.value)} />
         <FieldInput id={`${idPrefix}-recipient-phone`} label="수령자 전화번호" value={draft.recipientPhone} onChange={(event) => onChange("recipientPhone", event.target.value)} />
         {draft.deliveryMethod === "delivery" ? <>
