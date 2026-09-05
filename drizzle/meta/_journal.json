@@ -64,6 +64,13 @@
       "when": 1788356315674,
       "tag": "0008_breezy_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788568739936,
+      "tag": "0009_damp_scorpion",
+      "breakpoints": true
     }
   ]
 }

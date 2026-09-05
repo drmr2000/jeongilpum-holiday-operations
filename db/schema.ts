@@ -43,7 +43,7 @@ export const products = sqliteTable("products", {
 
 export const orders = sqliteTable("orders", {
   id: text("id").primaryKey(),
-  orderNo: text("order_no").notNull().unique(),
+  orderNo: text("order_no").notNull(),
   buyerName: text("buyer_name").notNull(),
   buyerPhone: text("buyer_phone").notNull(),
   paymentStatus: text("payment_status").notNull().default("unpaid"),

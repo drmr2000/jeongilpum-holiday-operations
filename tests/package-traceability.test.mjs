@@ -140,7 +140,7 @@ test("Palyeong assembly is all-or-nothing, consumes five packs, blocks duplicate
   assert.deepEqual(shortage.map((row) => ({ ...row })), [{ component_name: "제비추리", missing: 1 }]);
   assert.equal(database.prepare("SELECT COUNT(*) count FROM packages WHERE id='new-package'").get().count, 0);
   createPackAtomic(database, { id: "sp-JJ", batchId: "b-JJ", sequence: 1, code: "JJ-1", componentCode: "JJ", name: "제비추리", weight: 205, traceabilityNo: "444444444444" });
-  const code = buildPackageCode("VAC-PY", "JI-260830-9000", 1);
+  const code = buildPackageCode("VAC-PY", "JI-260830-9000", "legacy-order", 1);
   database.exec("BEGIN IMMEDIATE");
   try {
     database.prepare("INSERT INTO packages(id,order_id,order_item_id,package_sequence,assembly_key,package_code,product_id,product_name_snapshot,package_status,created_at,updated_at) VALUES('new-package','legacy-order','legacy-item',1,'assembly-1',?,'palyeong','팔영세트','completed','now','now')").run(code);

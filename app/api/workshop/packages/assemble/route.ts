@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     `).bind(workItem.id).first<{ sequence: number }>();
     const sequence = Number(next?.sequence ?? 1);
     const packageId = crypto.randomUUID();
-    const packageCode = buildPackageCode(workItem.code, workItem.order_no, sequence);
+    const packageCode = buildPackageCode(workItem.code, workItem.order_no, workItem.order_id, sequence);
     const now = new Date().toISOString();
 
     await runtimeEnv.DB.batch([

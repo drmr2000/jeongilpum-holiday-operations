@@ -152,6 +152,7 @@ type WorkDraft = {
 };
 
 type OrderDraft = {
+  orderNo: string;
   buyerName: string;
   buyerPhone: string;
 };
@@ -608,6 +609,7 @@ export default function SalesApp() {
         id: selection.order.id,
         expectedVersion: selection.order.version,
         changes: {
+          orderNo: draft.orderNo,
           buyerName: draft.buyerName,
           buyerPhone: draft.buyerPhone,
         },
@@ -997,6 +999,7 @@ export default function SalesApp() {
           title="주문 수정"
           description={selectedOrder.order.orderNo}
           initialDraft={{
+            orderNo: selectedOrder.order.orderNo,
             buyerName: selectedOrder.buyerName,
             buyerPhone: selectedOrder.buyerPhone,
           }}
@@ -1245,6 +1248,7 @@ function OrderEditor({
     >
       <form id={formId} className="sales-work-table__editor" onSubmit={submit}>
         <div className="sales-work-table__editor-grid">
+          <FieldInput id={`${formId}-order-no`} label="주문번호" value={draft.orderNo} onChange={(event) => update("orderNo", event.target.value)} />
           <FieldInput id={`${formId}-buyer-name`} label="주문자 성함" value={draft.buyerName} onChange={(event) => update("buyerName", event.target.value)} />
           <FieldInput id={`${formId}-buyer-phone`} label="주문자 전화번호" inputMode="tel" value={draft.buyerPhone} onChange={(event) => update("buyerPhone", event.target.value)} />
         </div>
@@ -1261,7 +1265,7 @@ function NewOrderEditor({
   onClose: () => void;
   onCreate: (draft: OrderDraft, workItems: WorkDraft[], idempotencyKey: string) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<OrderDraft>({ buyerName: "", buyerPhone: "" });
+  const [draft, setDraft] = useState<OrderDraft>({ orderNo: "", buyerName: "", buyerPhone: "" });
   const [workItems, setWorkItems] = useState<NewOrderWorkItem[]>(() => [{
     id: crypto.randomUUID(),
     draft: emptyWorkDraft(),

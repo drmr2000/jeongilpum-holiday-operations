@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { env } from "cloudflare:workers";
 import { OPERATOR_ACTOR, requireOperatorApi } from "../../lib/operator-session";
+import { nextOrderNo, orderNumberPrefix } from "../../lib/order-number";
 
 type CustomItemPayload = {
   category?: string;
@@ -60,6 +61,7 @@ type OrderUpdatePayload = {
   id?: string;
   expectedVersion?: number;
   changes?: {
+    orderNo?: unknown;
     buyerName?: unknown;
     buyerPhone?: unknown;
     customerNote?: unknown;
@@ -131,6 +133,7 @@ type ManualOrderRow = {
 
 type CurrentOrderRow = {
   id: string;
+  order_no: string;
   buyer_name: string;
   buyer_phone: string;
   customer_note: string;
@@ -420,9 +423,15 @@ function koreanDate(value: string) {
   return `${month}월 ${day}일 (${weekdays[date.getUTCDay()]})`;
 }
 
-function createOrderNo() {
-  const date = todayInSeoul().replaceAll("-", "").slice(2);
-  return `JI-${date}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+async function createOrderNo() {
+  const date = todayInSeoul();
+  const prefix = orderNumberPrefix(date);
+  const rows = await runtimeEnv.DB.prepare(`
+    SELECT order_no
+    FROM orders
+    WHERE order_no LIKE ?
+  `).bind(`${prefix}%`).all<{ order_no: string }>();
+  return nextOrderNo(date, rows.results.map((row) => row.order_no));
 }
 
 function fulfillmentTypeFor(deliveryMethod: ReceiptRow["delivery_method"]) {
@@ -540,7 +549,7 @@ async function createManualOrder(payload: CreatePayload) {
   }
 
   const orderId = crypto.randomUUID();
-  const orderNo = createOrderNo();
+  const orderNo = await createOrderNo();
   const buyerName = clean(payload.buyerName) || "주문자 미입력";
   const buyerPhone = normalizePhone(payload.buyerPhone ?? "");
   const now = new Date().toISOString();
@@ -851,7 +860,7 @@ export async function POST(request: Request) {
     }
 
     const orderId = crypto.randomUUID();
-    const orderNo = createOrderNo();
+    const orderNo = await createOrderNo();
     const totalAmount = workItems.reduce((sum, item) => sum + item.lineTotal, 0);
     const paidAmount = fulfillmentType === "onsite" ? totalAmount : 0;
     const paymentStatus = fulfillmentType === "onsite" ? "paid" : "unpaid";
@@ -919,7 +928,7 @@ export async function PATCH(request: Request) {
     }
 
     const changes = payload.changes;
-    const editableFields = ["buyerName", "buyerPhone", "customerNote"];
+    const editableFields = ["orderNo", "buyerName", "buyerPhone", "customerNote"];
     if (Object.keys(changes).some((field) => !editableFields.includes(field))) {
       return Response.json({ error: "수정할 수 없는 주문 정보가 포함되어 있습니다." }, { status: 400 });
     }
@@ -928,11 +937,13 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "수정할 주문 정보가 없습니다." }, { status: 400 });
     }
 
+    const orderNoInput = hasOwn(changes, "orderNo") ? textValue(changes.orderNo) : undefined;
     const buyerNameInput = hasOwn(changes, "buyerName") ? textValue(changes.buyerName) : undefined;
     const buyerPhoneInput = hasOwn(changes, "buyerPhone") ? textValue(changes.buyerPhone) : undefined;
     const customerNoteInput = hasOwn(changes, "customerNote") ? textValue(changes.customerNote) : undefined;
     if (
-      (hasOwn(changes, "buyerName") && buyerNameInput === undefined)
+      (hasOwn(changes, "orderNo") && orderNoInput === undefined)
+      || (hasOwn(changes, "buyerName") && buyerNameInput === undefined)
       || (hasOwn(changes, "buyerPhone") && buyerPhoneInput === undefined)
       || (hasOwn(changes, "customerNote") && customerNoteInput === undefined)
     ) {
@@ -940,7 +951,7 @@ export async function PATCH(request: Request) {
     }
 
     const current = await runtimeEnv.DB.prepare(`
-      SELECT id,buyer_name,buyer_phone,customer_note,version
+      SELECT id,order_no,buyer_name,buyer_phone,customer_note,version
       FROM orders
       WHERE id=?
     `).bind(orderId).first<CurrentOrderRow>();
@@ -952,6 +963,7 @@ export async function PATCH(request: Request) {
       }, { status: 409 });
     }
 
+    const orderNo = orderNoInput === undefined ? current.order_no : orderNoInput;
     const buyerName = buyerNameInput === undefined ? current.buyer_name : buyerNameInput || "주문자 미입력";
     const buyerPhone = buyerPhoneInput === undefined ? current.buyer_phone : normalizePhone(buyerPhoneInput);
     const customerNote = customerNoteInput === undefined ? current.customer_note : customerNoteInput;
@@ -960,9 +972,9 @@ export async function PATCH(request: Request) {
     const results = await runtimeEnv.DB.batch([
       runtimeEnv.DB.prepare(`
         UPDATE orders
-        SET buyer_name=?,buyer_phone=?,customer_note=?,version=version+1,updated_at=?
+        SET order_no=?,buyer_name=?,buyer_phone=?,customer_note=?,version=version+1,updated_at=?
         WHERE id=? AND version=?
-      `).bind(buyerName, buyerPhone, customerNote, now, current.id, current.version),
+      `).bind(orderNo, buyerName, buyerPhone, customerNote, now, current.id, current.version),
       runtimeEnv.DB.prepare(`
         INSERT INTO work_item_events(
           id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
@@ -987,6 +999,7 @@ export async function PATCH(request: Request) {
     return Response.json({
       order: {
         id: current.id,
+        orderNo,
         buyerName,
         buyerPhone,
         customerNote,

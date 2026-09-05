@@ -9,9 +9,10 @@ export function packageOrderToken(orderNo: string) {
   return orderNo.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-12) || "ORDER";
 }
 
-export function buildPackageCode(productCode: string, orderNo: string, sequence: number) {
+export function buildPackageCode(productCode: string, orderNo: string, orderId: string, sequence: number) {
   if (!Number.isInteger(sequence) || sequence < 1) throw new Error("패키지 순번은 1 이상이어야 합니다.");
-  return `${packageProductPrefix(productCode)}-${packageOrderToken(orderNo)}-${String(sequence).padStart(2, "0")}`;
+  const orderToken = orderId.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-8) || "ORDER";
+  return `${packageProductPrefix(productCode)}-${packageOrderToken(orderNo)}-${orderToken}-${String(sequence).padStart(2, "0")}`;
 }
 
 export function parseTraceabilityScan(raw: string) {

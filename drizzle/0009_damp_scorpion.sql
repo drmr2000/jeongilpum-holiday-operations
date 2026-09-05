@@ -1,0 +1,1 @@
+DROP INDEX `orders_order_no_unique`;
