@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_KIOSK_HEADLINE } from "../lib/app-settings";
+import { FormattedInput } from "../ui";
 import type { CategoryRailItem, OrderDraft, OrderRecord, Product, SeasonSchedule } from "./types";
 import AppNav from "./AppNav";
 import "../kiosk-flow.css";
@@ -30,7 +31,7 @@ function Quantity({value,onChange,big=false,max=null}:{value:number;onChange:(va
  return <div className={"quantity "+(big?"big":"")}><button disabled={value<=0} onClick={event=>{event.stopPropagation();onChange(Math.max(0,value-1))}} aria-label="수량 줄이기">−</button><b>{value}</b><button disabled={closed||atMax} onClick={event=>{event.stopPropagation();onChange(max===null?value+1:Math.min(max,value+1))}} aria-label="수량 늘리기">＋</button></div>;
 }
 function Field({label,value,onChange,placeholder,type="text",wide=false,error,readOnly=false}:{label:string;value:string;onChange:(value:string)=>void;placeholder:string;type?:string;wide?:boolean;error?:string;readOnly?:boolean}){
- return <label className={wide?"field wide":"field"}><span>{label}</span><input type={type} value={value} onChange={event=>onChange(event.target.value)} placeholder={placeholder} inputMode={type==="tel"?"numeric":undefined} aria-invalid={Boolean(error)} readOnly={readOnly}/>{error&&<small className="field-error">{error}</small>}</label>;
+ return <label className={wide?"field wide":"field"}><span>{label}</span>{type==="tel"?<FormattedInput id={`kiosk-${label}`} format="phone" value={value} onValueChange={onChange} placeholder={placeholder} aria-invalid={Boolean(error)} readOnly={readOnly}/>:<input type={type} value={value} onChange={event=>onChange(event.target.value)} placeholder={placeholder} aria-invalid={Boolean(error)} readOnly={readOnly}/>} {error&&<small className="field-error">{error}</small>}</label>;
 }
 
 export default function KioskApp({categories}:{categories:CategoryRailItem[]}){

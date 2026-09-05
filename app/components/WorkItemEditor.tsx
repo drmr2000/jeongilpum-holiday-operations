@@ -252,15 +252,15 @@ export function WorkItemFields({
           {existingItem ? null : <option value="">상품 선택</option>}
           {productOptions.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </FieldSelect>
-        <FieldInput id={`${idPrefix}-unit-price`} label="상품 단가" type="number" min="0" step="1" value={draft.unitPrice} onChange={(event) => onChange("unitPrice", event.target.value)} />
-        <FieldInput id={`${idPrefix}-quantity`} label="수량" type="number" min="1" step="1" value={draft.quantity} onChange={(event) => onChange("quantity", event.target.value)} />
+        <FieldInput id={`${idPrefix}-unit-price`} label="상품 단가" format="number" value={draft.unitPrice} onValueChange={(value) => onChange("unitPrice", value)} />
+        <FieldInput id={`${idPrefix}-quantity`} label="수량" format="number" value={draft.quantity} onValueChange={(value) => onChange("quantity", value)} />
         <FieldSelect id={`${idPrefix}-delivery`} label="수령방법" value={draft.deliveryMethod} onChange={(event) => onChange("deliveryMethod", event.target.value as DeliveryMethod)}>
           {Object.entries(DELIVERY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </FieldSelect>
         <FieldInput id={`${idPrefix}-due-at`} label="수령일시" type="datetime-local" value={draft.dueAt} onChange={(event) => onChange("dueAt", event.target.value)} />
         <WorkStatusSelect id={`${idPrefix}-status`} label="작업 상태" value={draft.workStatus} onChange={(status) => onChange("workStatus", status)} />
         <FieldInput id={`${idPrefix}-recipient-name`} label="수령자 성함" value={draft.recipientName} onChange={(event) => onChange("recipientName", event.target.value)} />
-        <FieldInput id={`${idPrefix}-recipient-phone`} label="수령자 전화번호" inputMode="tel" value={draft.recipientPhone} onChange={(event) => onChange("recipientPhone", event.target.value)} />
+        <FieldInput id={`${idPrefix}-recipient-phone`} label="수령자 전화번호" format="phone" value={draft.recipientPhone} onValueChange={(value) => onChange("recipientPhone", value)} />
         {draft.deliveryMethod === "delivery" ? <>
           <FieldInput id={`${idPrefix}-postal-code`} label="우편번호" value={draft.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} />
           <FieldInput id={`${idPrefix}-road-address`} label="도로명 주소" value={draft.roadAddr} onChange={(event) => onChange("roadAddr", event.target.value)} />

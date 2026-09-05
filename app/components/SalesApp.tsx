@@ -1030,7 +1030,7 @@ function BulkActions({
           <FieldSelect id="sales-bulk-payment-status" label="결제 상태" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)}>
             {Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </FieldSelect>
-          <FieldInput id="sales-bulk-paid-amount" label="결제 금액" type="number" min="0" step="1" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} />
+          <FieldInput id="sales-bulk-paid-amount" label="결제 금액" format="number" value={paidAmount} onValueChange={setPaidAmount} />
           <Button size="sm" variant="ghost" disabled={!Number.isInteger(Number(paidAmount)) || Number(paidAmount) < 0} onClick={() => void onRun({ action: "payment", paymentStatus, paidAmount: Number(paidAmount) }, "결제 정보를 일괄 변경했습니다.")}>결제 변경</Button>
         </div>
       </div>
@@ -1099,7 +1099,7 @@ function OrderEditor({
         <div className="sales-work-table__editor-grid">
           <FieldInput id={`${formId}-order-no`} label="주문번호" value={draft.orderNo} onChange={(event) => update("orderNo", event.target.value)} />
           <FieldInput id={`${formId}-buyer-name`} label="주문자 성함" value={draft.buyerName} onChange={(event) => update("buyerName", event.target.value)} />
-          <FieldInput id={`${formId}-buyer-phone`} label="주문자 전화번호" inputMode="tel" value={draft.buyerPhone} onChange={(event) => update("buyerPhone", event.target.value)} />
+          <FieldInput id={`${formId}-buyer-phone`} label="주문자 전화번호" format="phone" value={draft.buyerPhone} onValueChange={(value) => update("buyerPhone", value)} />
         </div>
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
       </form>
@@ -1179,7 +1179,7 @@ function NewOrderEditor({
       <form id="sales-new-order-editor" className="sales-work-table__editor" onSubmit={submit}>
         <div className="sales-work-table__editor-grid">
           <FieldInput id="new-order-buyer-name" label="주문자 성함" value={draft.buyerName} onChange={(event) => updateOrder("buyerName", event.target.value)} />
-          <FieldInput id="new-order-buyer-phone" label="주문자 전화번호" inputMode="tel" value={draft.buyerPhone} onChange={(event) => updateOrder("buyerPhone", event.target.value)} />
+          <FieldInput id="new-order-buyer-phone" label="주문자 전화번호" format="phone" value={draft.buyerPhone} onValueChange={(value) => updateOrder("buyerPhone", value)} />
         </div>
         {workItems.map((item, index) => (
           <section key={item.id} className="sales-work-table__editor" aria-label={`작업 항목 ${index + 1}`}>
@@ -1303,7 +1303,7 @@ function PaymentEditor({
         <FieldSelect id="sales-payment-status" label="결제 상태" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)}>
           {Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </FieldSelect>
-        <FieldInput id="sales-paid-amount" label="결제 금액" type="number" min="0" step="1" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} hint="주문 금액보다 큰 금액도 운영자가 기록할 수 있습니다." />
+        <FieldInput id="sales-paid-amount" label="결제 금액" format="number" value={paidAmount} onValueChange={setPaidAmount} hint="주문 금액보다 큰 금액도 운영자가 기록할 수 있습니다." />
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
       </form>
     </Modal>

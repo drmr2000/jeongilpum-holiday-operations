@@ -11,9 +11,11 @@ export {
 } from "./DataTable";
 export {
   Field,
+  FormattedInput,
   FieldInput,
   FieldSelect,
   FieldTextarea,
+  type FormattedInputProps,
   type FieldInputProps,
   type FieldProps,
   type FieldSelectProps,

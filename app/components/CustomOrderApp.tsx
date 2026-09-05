@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FormattedInput } from "../ui";
+import { parseIntegerInput } from "../lib/input-format";
 import type { OrderDraft } from "./types";
 
 const budgetOptions = [
@@ -28,7 +30,7 @@ const kioskStorageKey = "jeongilpum-kiosk-draft";
 
 function selectedAmount(draft: Draft) {
   if (draft.budgetOption === "금액 직접 입력") {
-    return Number.parseInt(draft.directAmount.replace(/\D/g, ""), 10) || 0;
+    return parseIntegerInput(draft.directAmount) ?? 0;
   }
   return budgetOptions.find((option) => option.label === draft.budgetOption)?.amount ?? 0;
 }
@@ -143,16 +145,14 @@ export default function CustomOrderApp() {
             </button>
           </div>
           {draft.budgetOption === "금액 직접 입력" && (
-            <label className="custom-wide">
+            <label className="custom-wide" htmlFor="custom-order-direct-amount">
               <span>직접 입력 금액</span>
-              <input
-                type="number"
-                min="200000"
-                step="10000"
-                inputMode="numeric"
+              <FormattedInput
+                id="custom-order-direct-amount"
+                format="number"
                 value={draft.directAmount}
                 aria-invalid={Boolean(errors.budget)}
-                onChange={(event) => set("directAmount", event.target.value)}
+                onValueChange={(value) => set("directAmount", value)}
                 placeholder="200000"
               />
             </label>

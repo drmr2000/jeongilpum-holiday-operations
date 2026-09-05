@@ -18,6 +18,7 @@ import {
   useResource,
   type DataTableColumn,
 } from "../ui";
+import { parseIntegerInput } from "../lib/input-format";
 
 type CatalogProduct = {
   id: string;
@@ -92,7 +93,6 @@ type ProductDraft = {
 type BulkAction = "daily-limit" | "category" | "active" | null;
 
 const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
-const formattedInteger = (value: number) => value.toLocaleString("ko-KR");
 
 type DailyLimitStatus = "unlimited" | "sold_out" | "limited";
 type RemainingStatus = "unlimited" | "sold_out" | "low" | "available";
@@ -134,16 +134,8 @@ const VISIBILITY_TONES: Record<VisibilityStatus, import("../ui").BadgeTone> = {
   hidden: "neutral",
 };
 
-function numericText(value: string) {
-  const digits = value.replace(/\D/g, "");
-  return digits ? Number(digits).toLocaleString("ko-KR") : "";
-}
-
 function parsedInteger(value: string) {
-  const normalized = value.replaceAll(",", "").trim();
-  if (!normalized || !/^\d+$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isSafeInteger(parsed) ? parsed : null;
+  return parseIntegerInput(value);
 }
 
 function dailyLimitStatus(dailyLimit: number | null): DailyLimitStatus {
@@ -177,7 +169,7 @@ function draftFor(product: ProductRecord): ProductDraft {
     name: product.name,
     subtitle: product.subtitle,
     description: product.description,
-    price: formattedInteger(product.price),
+    price: String(product.price),
     displayWeight: product.displayWeight ?? "",
     badge: product.badge ?? "",
     imageUrl: product.imageUrl ?? "",
@@ -957,7 +949,7 @@ export default function SettingsApp() {
         <FieldSelect id="product-category" label="카테고리" value={draft.category} onChange={(event) => updateDraft("category", event.target.value)}>
           {categoryNames.map((category) => <option key={category} value={category}>{category}</option>)}
         </FieldSelect>
-        <FieldInput id="product-price" label="가격" inputMode="numeric" value={draft.price} onChange={(event) => updateDraft("price", numericText(event.target.value))} />
+        <FieldInput id="product-price" label="가격" format="number" value={draft.price} onValueChange={(value) => updateDraft("price", value)} />
         <FieldInput id="product-weight" label="중량" value={draft.displayWeight} onChange={(event) => updateDraft("displayWeight", event.target.value)} placeholder="예: 1.8kg" />
         <FieldInput className="settings-editor-grid__wide" id="product-subtitle" label="부제" value={draft.subtitle} onChange={(event) => updateDraft("subtitle", event.target.value)} />
         <FieldTextarea className="settings-editor-grid__wide" id="product-description" label="설명" value={draft.description} onChange={(event) => updateDraft("description", event.target.value)} />
@@ -966,9 +958,9 @@ export default function SettingsApp() {
           id="product-daily-limit"
           label="한정수량"
           hint="비우면 무제한입니다."
-          inputMode="numeric"
           value={draft.dailyLimit}
-          onChange={(event) => updateDraft("dailyLimit", numericText(event.target.value))}
+          format="number"
+          onValueChange={(value) => updateDraft("dailyLimit", value)}
         />
         <FieldInput
           className="settings-editor-grid__wide"
@@ -1019,9 +1011,9 @@ export default function SettingsApp() {
         id="bulk-daily-limit"
         label="한정수량"
         hint="비우면 무제한입니다."
-        inputMode="numeric"
         value={bulkDailyLimit}
-        onChange={(event) => setBulkDailyLimit(numericText(event.target.value))}
+        format="number"
+        onValueChange={setBulkDailyLimit}
       /> : null}
       {bulkAction === "category" ? <FieldSelect id="bulk-category" label="카테고리" value={selectedBulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>
         {categoryNames.map((category) => <option key={category} value={category}>{category}</option>)}
