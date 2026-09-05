@@ -35,6 +35,11 @@ type CreatePayload = {
   idempotencyKey?: string;
   buyerName?: string;
   buyerPhone?: string;
+  orderNo?: string;
+  paymentStatus?: string;
+  paidAmount?: number;
+  totalAmount?: number;
+  customerArrivedAt?: string | null;
   fulfillmentType?: "onsite" | "pickup" | "shipping";
   paymentMethod?: "card" | "cash" | "bank_transfer" | "later";
   pickupDate?: string;
@@ -55,12 +60,12 @@ type CreatePayload = {
 type OrderUpdatePayload = {
   id?: string;
   expectedVersion?: number;
-  changes?: {
-    orderNo?: unknown;
-    buyerName?: unknown;
-    buyerPhone?: unknown;
-    customerNote?: unknown;
-  };
+  changes?: Record<string, unknown>;
+  workItems?: Array<{
+    id?: unknown;
+    expectedVersion?: unknown;
+    changes?: Record<string, unknown>;
+  }>;
 };
 
 type ProductRow = {
@@ -131,6 +136,10 @@ type CurrentOrderRow = {
   order_no: string;
   buyer_name: string;
   buyer_phone: string;
+  payment_status: string;
+  paid_amount: number;
+  total_amount: number;
+  customer_arrived_at: string | null;
   customer_note: string;
   version: number;
 };
@@ -538,11 +547,13 @@ async function createManualOrder(payload: CreatePayload) {
   }
 
   const orderId = crypto.randomUUID();
-  const orderNo = await createOrderNo();
+  const orderNo = clean(payload.orderNo) || await createOrderNo();
   const buyerName = clean(payload.buyerName) || "주문자 미입력";
   const buyerPhone = normalizePhone(payload.buyerPhone ?? "");
   const now = new Date().toISOString();
-  const totalAmount = preparedItems.workItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const totalAmount = typeof payload.totalAmount === "number"
+    ? payload.totalAmount
+    : preparedItems.workItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
   try {
     await runtimeEnv.DB.batch([
@@ -550,16 +561,17 @@ async function createManualOrder(payload: CreatePayload) {
         INSERT INTO orders(
           id,order_no,buyer_name,buyer_phone,payment_status,paid_amount,total_amount,
           customer_arrived_at,customer_note,idempotency_key,version,created_at,updated_at
-        ) VALUES(?,?,?,?,?,?,?,NULL,?,?,1,?,?)
+        ) VALUES(?,?,?,?,?,?,?,?,?,1,?,?)
       `).bind(
         orderId,
         orderNo,
         buyerName,
         buyerPhone,
-        "unpaid",
-        0,
+        clean(payload.paymentStatus) || "unpaid",
+        typeof payload.paidAmount === "number" ? payload.paidAmount : 0,
         totalAmount,
-        "",
+        payload.customerArrivedAt ?? null,
+        clean(payload.note),
         idempotencyKey,
         now,
         now,
@@ -916,7 +928,16 @@ export async function PATCH(request: Request) {
     }
 
     const changes = payload.changes;
-    const editableFields = ["orderNo", "buyerName", "buyerPhone", "customerNote"];
+    const editableFields = [
+      "orderNo",
+      "buyerName",
+      "buyerPhone",
+      "paymentStatus",
+      "paidAmount",
+      "totalAmount",
+      "customerArrivedAt",
+      "customerNote",
+    ];
     if (Object.keys(changes).some((field) => !editableFields.includes(field))) {
       return Response.json({ error: "수정할 수 없는 주문 정보가 포함되어 있습니다." }, { status: 400 });
     }
@@ -925,21 +946,9 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "수정할 주문 정보가 없습니다." }, { status: 400 });
     }
 
-    const orderNoInput = hasOwn(changes, "orderNo") ? textValue(changes.orderNo) : undefined;
-    const buyerNameInput = hasOwn(changes, "buyerName") ? textValue(changes.buyerName) : undefined;
-    const buyerPhoneInput = hasOwn(changes, "buyerPhone") ? textValue(changes.buyerPhone) : undefined;
-    const customerNoteInput = hasOwn(changes, "customerNote") ? textValue(changes.customerNote) : undefined;
-    if (
-      (hasOwn(changes, "orderNo") && orderNoInput === undefined)
-      || (hasOwn(changes, "buyerName") && buyerNameInput === undefined)
-      || (hasOwn(changes, "buyerPhone") && buyerPhoneInput === undefined)
-      || (hasOwn(changes, "customerNote") && customerNoteInput === undefined)
-    ) {
-      return Response.json({ error: "주문 정보 형식을 확인해주세요." }, { status: 400 });
-    }
-
     const current = await runtimeEnv.DB.prepare(`
-      SELECT id,order_no,buyer_name,buyer_phone,customer_note,version
+      SELECT id,order_no,buyer_name,buyer_phone,payment_status,paid_amount,total_amount,
+        customer_arrived_at,customer_note,version
       FROM orders
       WHERE id=?
     `).bind(orderId).first<CurrentOrderRow>();
@@ -951,18 +960,76 @@ export async function PATCH(request: Request) {
       }, { status: 409 });
     }
 
-    const orderNo = orderNoInput === undefined ? current.order_no : orderNoInput;
-    const buyerName = buyerNameInput === undefined ? current.buyer_name : buyerNameInput || "주문자 미입력";
-    const buyerPhone = buyerPhoneInput === undefined ? current.buyer_phone : normalizePhone(buyerPhoneInput);
-    const customerNote = customerNoteInput === undefined ? current.customer_note : customerNoteInput;
+    const orderNo = hasOwn(changes, "orderNo") ? String(changes.orderNo ?? "") : current.order_no;
+    const buyerName = hasOwn(changes, "buyerName") ? String(changes.buyerName ?? "") : current.buyer_name;
+    const buyerPhone = hasOwn(changes, "buyerPhone") ? String(changes.buyerPhone ?? "") : current.buyer_phone;
+    const paymentStatus = hasOwn(changes, "paymentStatus") ? String(changes.paymentStatus ?? "") : current.payment_status;
+    const paidAmount = hasOwn(changes, "paidAmount") ? changes.paidAmount : current.paid_amount;
+    const totalAmount = hasOwn(changes, "totalAmount") ? changes.totalAmount : current.total_amount;
+    const customerArrivedAt = hasOwn(changes, "customerArrivedAt") ? changes.customerArrivedAt : current.customer_arrived_at;
+    const customerNote = hasOwn(changes, "customerNote") ? String(changes.customerNote ?? "") : current.customer_note;
+    const workItems = payload.workItems ?? [];
+    if (!Array.isArray(workItems) || workItems.some((item) => !isRecord(item.changes) || !clean(item.id) || !Number.isInteger(item.expectedVersion))) {
+      return Response.json({ error: "수정할 작업 정보를 확인해주세요." }, { status: 400 });
+    }
     const now = new Date().toISOString();
     const eventValue = JSON.stringify({ redactedFields: changedFields });
-    const results = await runtimeEnv.DB.batch([
+    const statements: D1PreparedStatement[] = [
       runtimeEnv.DB.prepare(`
         UPDATE orders
-        SET order_no=?,buyer_name=?,buyer_phone=?,customer_note=?,version=version+1,updated_at=?
+        SET order_no=?,buyer_name=?,buyer_phone=?,payment_status=?,paid_amount=?,total_amount=?,
+          customer_arrived_at=?,customer_note=?,version=version+1,updated_at=?
         WHERE id=? AND version=?
-      `).bind(orderNo, buyerName, buyerPhone, customerNote, now, current.id, current.version),
+      `).bind(
+        orderNo,
+        buyerName,
+        buyerPhone,
+        paymentStatus,
+        paidAmount,
+        totalAmount,
+        customerArrivedAt,
+        customerNote,
+        now,
+        current.id,
+        current.version,
+      ),
+      ...workItems.map((item) => {
+        const itemChanges = item.changes as Record<string, unknown>;
+        return runtimeEnv.DB.prepare(`
+          UPDATE work_items
+          SET product_id=COALESCE(?,product_id),
+            product_name_snapshot=COALESCE((SELECT name FROM products WHERE id=?),product_name_snapshot),
+            unit_price_snapshot=COALESCE(?,unit_price_snapshot),quantity=COALESCE(?,quantity),
+            line_total=COALESCE(?,unit_price_snapshot)*COALESCE(?,quantity),
+            delivery_method=COALESCE(?,delivery_method),due_at=COALESCE(?,due_at),
+            work_status=COALESCE(?,work_status),recipient_name=?,recipient_phone=?,postal_code=?,road_addr=?,
+            road_addr_reference=?,jibun_addr=?,detail_addr=?,customization_json=?,note=?,version=version+1,updated_at=?
+          WHERE id=? AND order_id=? AND version=?
+        `).bind(
+          hasOwn(itemChanges, "productId") ? itemChanges.productId : null,
+          hasOwn(itemChanges, "productId") ? itemChanges.productId : null,
+          hasOwn(itemChanges, "unitPrice") ? itemChanges.unitPrice : null,
+          hasOwn(itemChanges, "quantity") ? itemChanges.quantity : null,
+          hasOwn(itemChanges, "unitPrice") ? itemChanges.unitPrice : null,
+          hasOwn(itemChanges, "quantity") ? itemChanges.quantity : null,
+          hasOwn(itemChanges, "deliveryMethod") ? itemChanges.deliveryMethod : null,
+          hasOwn(itemChanges, "dueAt") ? itemChanges.dueAt : null,
+          hasOwn(itemChanges, "workStatus") ? itemChanges.workStatus : null,
+          hasOwn(itemChanges, "recipientName") ? itemChanges.recipientName : null,
+          hasOwn(itemChanges, "recipientPhone") ? itemChanges.recipientPhone : null,
+          hasOwn(itemChanges, "postalCode") ? itemChanges.postalCode : null,
+          hasOwn(itemChanges, "roadAddr") ? itemChanges.roadAddr : null,
+          hasOwn(itemChanges, "roadAddrReference") ? itemChanges.roadAddrReference : null,
+          hasOwn(itemChanges, "jibunAddr") ? itemChanges.jibunAddr : null,
+          hasOwn(itemChanges, "detailAddr") ? itemChanges.detailAddr : null,
+          hasOwn(itemChanges, "customizationJson") ? itemChanges.customizationJson : null,
+          hasOwn(itemChanges, "note") ? itemChanges.note : null,
+          now,
+          clean(item.id),
+          current.id,
+          item.expectedVersion,
+        );
+      }),
       runtimeEnv.DB.prepare(`
         INSERT INTO work_item_events(
           id,work_item_id,order_id,event_type,from_value,to_value,actor,created_at
@@ -979,8 +1046,12 @@ export async function PATCH(request: Request) {
         current.id,
         current.version + 1,
       ),
-    ]);
+    ];
+    const results = await runtimeEnv.DB.batch(statements);
     if (!results[0].meta.changes) {
+      return Response.json({ error: "다른 화면에서 먼저 수정했습니다. 새로고침 후 다시 시도해주세요." }, { status: 409 });
+    }
+    if (results.slice(1, 1 + workItems.length).some((result) => !result.meta.changes)) {
       return Response.json({ error: "다른 화면에서 먼저 수정했습니다. 새로고침 후 다시 시도해주세요." }, { status: 409 });
     }
 
@@ -990,6 +1061,10 @@ export async function PATCH(request: Request) {
         orderNo,
         buyerName,
         buyerPhone,
+        paymentStatus,
+        paidAmount,
+        totalAmount,
+        customerArrivedAt,
         customerNote,
         version: current.version + 1,
       },

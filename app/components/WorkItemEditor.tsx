@@ -261,13 +261,11 @@ export function WorkItemFields({
         <WorkStatusSelect id={`${idPrefix}-status`} label="작업 상태" value={draft.workStatus} onChange={(status) => onChange("workStatus", status)} />
         <FieldInput id={`${idPrefix}-recipient-name`} label="수령자 성함" value={draft.recipientName} onChange={(event) => onChange("recipientName", event.target.value)} />
         <FieldInput id={`${idPrefix}-recipient-phone`} label="수령자 전화번호" format="phone" value={draft.recipientPhone} onValueChange={(value) => onChange("recipientPhone", value)} />
-        {draft.deliveryMethod === "delivery" ? <>
-          <FieldInput id={`${idPrefix}-postal-code`} label="우편번호" value={draft.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} />
-          <FieldInput id={`${idPrefix}-road-address`} label="도로명 주소" value={draft.roadAddr} onChange={(event) => onChange("roadAddr", event.target.value)} />
-          <FieldInput id={`${idPrefix}-road-reference`} label="주소 참고" value={draft.roadAddrReference} onChange={(event) => onChange("roadAddrReference", event.target.value)} />
-          <FieldInput id={`${idPrefix}-jibun-address`} label="지번 주소" value={draft.jibunAddr} onChange={(event) => onChange("jibunAddr", event.target.value)} />
-          <FieldInput id={`${idPrefix}-detail-address`} className="sales-work-table__editor-wide" label="상세 주소" value={draft.detailAddr} onChange={(event) => onChange("detailAddr", event.target.value)} />
-        </> : null}
+        <FieldInput id={`${idPrefix}-postal-code`} label="우편번호" value={draft.postalCode} onChange={(event) => onChange("postalCode", event.target.value)} />
+        <FieldInput id={`${idPrefix}-road-address`} label="도로명 주소" value={draft.roadAddr} onChange={(event) => onChange("roadAddr", event.target.value)} />
+        <FieldInput id={`${idPrefix}-road-reference`} label="주소 참고" value={draft.roadAddrReference} onChange={(event) => onChange("roadAddrReference", event.target.value)} />
+        <FieldInput id={`${idPrefix}-jibun-address`} label="지번 주소" value={draft.jibunAddr} onChange={(event) => onChange("jibunAddr", event.target.value)} />
+        <FieldInput id={`${idPrefix}-detail-address`} className="sales-work-table__editor-wide" label="상세 주소" value={draft.detailAddr} onChange={(event) => onChange("detailAddr", event.target.value)} />
         <FieldTextarea id={`${idPrefix}-customization`} className="sales-work-table__editor-wide" label="구성 정보" rows={2} value={draft.customizationJson} onChange={(event) => onChange("customizationJson", event.target.value)} />
         <FieldTextarea id={`${idPrefix}-note`} className="sales-work-table__editor-wide" label="메모" rows={3} value={draft.note} onChange={(event) => onChange("note", event.target.value)} />
       </div>

@@ -10,6 +10,7 @@ import {
   DateRangeNavigator,
   FieldInput,
   FieldSelect,
+  FieldTextarea,
   Modal,
   OperationsPageHeader,
   Tabs,
@@ -70,6 +71,7 @@ type WorkItem = {
   paidAmount: number;
   totalAmount: number;
   customerArrivedAt: string | null;
+  customerNote: string;
   orderVersion: number;
   productDailyLimit: number | null;
   productScheduledQuantity: number;
@@ -122,6 +124,11 @@ type OrderDraft = {
   orderNo: string;
   buyerName: string;
   buyerPhone: string;
+  paymentStatus: string;
+  paidAmount: string;
+  totalAmount: string;
+  customerArrivedAt: string;
+  customerNote: string;
 };
 
 type NewOrderWorkItem = {
@@ -503,6 +510,11 @@ export default function SalesApp() {
         idempotencyKey,
         buyerName: draft.buyerName,
         buyerPhone: draft.buyerPhone,
+        paymentStatus: draft.paymentStatus,
+        paidAmount: Number(draft.paidAmount),
+        totalAmount: Number(draft.totalAmount),
+        customerArrivedAt: draft.customerArrivedAt || null,
+        note: draft.customerNote,
         items: workItems.map((item) => ({
           productId: item.productId,
           unitPrice: Number(item.unitPrice),
@@ -528,7 +540,7 @@ export default function SalesApp() {
     setNotice(workItems.length ? "새 주문과 작업 항목을 추가했습니다." : "새 주문을 추가했습니다. 작업 항목을 추가해주세요.");
   };
 
-  const saveOrder = async (selection: OrderSelection, draft: OrderDraft) => {
+  const saveOrder = async (selection: OrderSelection, draft: OrderDraft, workItems: OrderWorkItemDraft[]) => {
     const response = await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -539,12 +551,22 @@ export default function SalesApp() {
           orderNo: draft.orderNo,
           buyerName: draft.buyerName,
           buyerPhone: draft.buyerPhone,
+          paymentStatus: draft.paymentStatus,
+          paidAmount: Number(draft.paidAmount),
+          totalAmount: Number(draft.totalAmount),
+          customerArrivedAt: draft.customerArrivedAt || null,
+          customerNote: draft.customerNote,
         },
+        workItems: workItems.map(({ id, expectedVersion, draft: workItemDraft }) => ({
+          id,
+          expectedVersion,
+          changes: toWorkItemChanges(workItemDraft),
+        })),
       }),
     });
     await responseData(response);
     setSelectedOrder(null);
-    setNotice("주문자 정보를 저장했습니다.");
+    setNotice("주문 정보를 저장했습니다.");
     await reloadActive();
   };
 
@@ -930,11 +952,16 @@ export default function SalesApp() {
             orderNo: selectedOrder.order.orderNo,
             buyerName: selectedOrder.buyerName,
             buyerPhone: selectedOrder.buyerPhone,
+            paymentStatus: selectedOrder.order.paymentStatus,
+            paidAmount: String(selectedOrder.order.paidAmount),
+            totalAmount: String(selectedOrder.order.totalAmount),
+            customerArrivedAt: selectedOrder.order.workItems[0]?.customerArrivedAt ?? "",
+            customerNote: selectedOrder.order.workItems[0]?.customerNote ?? "",
           }}
           workItems={selectedOrder.order.workItems}
           submitLabel="저장"
           onClose={() => setSelectedOrder(null)}
-          onSave={(draft) => saveOrder(selectedOrder, draft)}
+          onSave={(draft, workItems) => saveOrder(selectedOrder, draft, workItems)}
           onDelete={() => setDeleteOrder(selectedOrder)}
         />
       ) : null}
@@ -1058,10 +1085,31 @@ function OrderEditor({
   workItems: WorkItem[];
   submitLabel: string;
   onClose: () => void;
-  onSave: (draft: OrderDraft) => Promise<void>;
+  onSave: (draft: OrderDraft, workItems: OrderWorkItemDraft[]) => Promise<void>;
   onDelete?: () => void;
 }) {
   const [draft, setDraft] = useState(() => initialDraft);
+  const [workItemDrafts, setWorkItemDrafts] = useState<OrderWorkItemDraft[]>(() => workItems.map((item) => ({
+    id: item.id,
+    expectedVersion: item.version,
+    draft: {
+      productId: item.productId,
+      unitPrice: String(item.unitPrice),
+      quantity: String(item.quantity),
+      deliveryMethod: item.deliveryMethod,
+      dueAt: item.dueAt.slice(0, 16),
+      recipientName: item.recipientName ?? "",
+      recipientPhone: item.recipientPhone ?? "",
+      postalCode: item.postalCode ?? "",
+      roadAddr: item.roadAddr ?? "",
+      roadAddrReference: item.roadAddrReference ?? "",
+      jibunAddr: item.jibunAddr ?? "",
+      detailAddr: item.detailAddr ?? "",
+      customizationJson: item.customizationJson ?? "",
+      workStatus: item.workStatus,
+      note: item.note,
+    },
+  })));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const formId = onDelete ? "sales-order-editor" : "sales-new-order-editor";
@@ -1075,7 +1123,7 @@ function OrderEditor({
     setSaving(true);
     setError("");
     try {
-      await onSave(draft);
+      await onSave(draft, workItemDrafts);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "주문을 저장하지 못했습니다.");
     } finally {
@@ -1096,28 +1144,52 @@ function OrderEditor({
       </>}
     >
       <form id={formId} className="sales-work-table__editor" onSubmit={submit}>
-        <div className="sales-work-table__editor-grid">
-          <FieldInput id={`${formId}-order-no`} label="주문번호" value={draft.orderNo} onChange={(event) => update("orderNo", event.target.value)} />
-          <FieldInput id={`${formId}-buyer-name`} label="주문자 성함" value={draft.buyerName} onChange={(event) => update("buyerName", event.target.value)} />
-          <FieldInput id={`${formId}-buyer-phone`} label="주문자 전화번호" format="phone" value={draft.buyerPhone} onValueChange={(value) => update("buyerPhone", value)} />
-        </div>
+        <OrderFields draft={draft} idPrefix={formId} onChange={update} />
+        {workItemDrafts.map((item, index) => (
+          <section key={item.id} className="sales-work-table__editor" aria-label={`작업 항목 ${index + 1}`}>
+            <strong>작업 항목 {index + 1}</strong>
+            <SharedWorkItemFields
+              draft={item.draft}
+              idPrefix={`${formId}-${item.id}`}
+              existingItem={workItems[index]}
+              onChange={(key, value) => setWorkItemDrafts((current) => current.map((currentItem) => (
+                currentItem.id === item.id ? { ...currentItem, draft: { ...currentItem.draft, [key]: value } } : currentItem
+              )))}
+            />
+          </section>
+        ))}
         {error ? <p className="sales-work-table__error" role="alert">{error}</p> : null}
       </form>
-      <DataTable
-        ariaLabel="주문 세부 작업"
-        rows={workItems}
-        columns={[
-          { id: "product", header: "상품", cell: (item) => item.productName, rowHeader: true, multiline: true },
-          { id: "quantity", header: "수량", cell: (item) => `${item.quantity.toLocaleString()}개`, align: "right", width: "88px" },
-          { id: "delivery", header: "수령방법", cell: (item) => DELIVERY_LABELS[item.deliveryMethod], width: "104px" },
-          { id: "dueAt", header: "수령일시", cell: (item) => item.dueAt.slice(0, 16), width: "164px" },
-          { id: "status", header: "작업 상태", cell: (item) => WORK_STATUS_LABELS[item.workStatus], width: "108px" },
-          { id: "note", header: "메모", cell: (item) => item.note || "없음", multiline: true },
-        ]}
-        getRowId={(item) => item.id}
-        emptyMessage="등록된 세부 작업이 없습니다."
-      />
     </Modal>
+  );
+}
+
+type OrderWorkItemDraft = {
+  id: string;
+  expectedVersion: number;
+  draft: WorkDraft;
+};
+
+function OrderFields({
+  draft,
+  idPrefix,
+  onChange,
+}: {
+  draft: OrderDraft;
+  idPrefix: string;
+  onChange: <Key extends keyof OrderDraft>(key: Key, value: OrderDraft[Key]) => void;
+}) {
+  return (
+    <div className="sales-work-table__editor-grid">
+      <FieldInput id={`${idPrefix}-order-no`} label="주문번호" value={draft.orderNo} onChange={(event) => onChange("orderNo", event.target.value)} />
+      <FieldInput id={`${idPrefix}-buyer-name`} label="주문자 성함" value={draft.buyerName} onChange={(event) => onChange("buyerName", event.target.value)} />
+      <FieldInput id={`${idPrefix}-buyer-phone`} label="주문자 전화번호" format="phone" value={draft.buyerPhone} onValueChange={(value) => onChange("buyerPhone", value)} />
+      <FieldInput id={`${idPrefix}-payment-status`} label="결제 상태" value={draft.paymentStatus} onChange={(event) => onChange("paymentStatus", event.target.value)} />
+      <FieldInput id={`${idPrefix}-paid-amount`} label="결제 금액" format="number" value={draft.paidAmount} onValueChange={(value) => onChange("paidAmount", value)} />
+      <FieldInput id={`${idPrefix}-total-amount`} label="주문 금액" format="number" value={draft.totalAmount} onValueChange={(value) => onChange("totalAmount", value)} />
+      <FieldInput id={`${idPrefix}-customer-arrived-at`} label="고객 도착 시각" value={draft.customerArrivedAt} onChange={(event) => onChange("customerArrivedAt", event.target.value)} />
+      <FieldTextarea id={`${idPrefix}-customer-note`} className="sales-work-table__editor-wide" label="고객 메모" rows={3} value={draft.customerNote} onChange={(event) => onChange("customerNote", event.target.value)} />
+    </div>
   );
 }
 
@@ -1128,7 +1200,16 @@ function NewOrderEditor({
   onClose: () => void;
   onCreate: (draft: OrderDraft, workItems: WorkDraft[], idempotencyKey: string) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<OrderDraft>({ orderNo: "", buyerName: "", buyerPhone: "" });
+  const [draft, setDraft] = useState<OrderDraft>({
+    orderNo: "",
+    buyerName: "",
+    buyerPhone: "",
+    paymentStatus: "unpaid",
+    paidAmount: "0",
+    totalAmount: "0",
+    customerArrivedAt: "",
+    customerNote: "",
+  });
   const [workItems, setWorkItems] = useState<NewOrderWorkItem[]>(() => [{
     id: crypto.randomUUID(),
     draft: emptyWorkDraft(),
@@ -1149,11 +1230,6 @@ function NewOrderEditor({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const invalidItemIndex = workItems.findIndex((item) => workDraftError(item.draft));
-    if (invalidItemIndex !== -1) {
-      setError(`작업 항목 ${invalidItemIndex + 1}: ${workDraftError(workItems[invalidItemIndex].draft)}`);
-      return;
-    }
     setSaving(true);
     setError("");
     try {
@@ -1177,10 +1253,7 @@ function NewOrderEditor({
       </>}
     >
       <form id="sales-new-order-editor" className="sales-work-table__editor" onSubmit={submit}>
-        <div className="sales-work-table__editor-grid">
-          <FieldInput id="new-order-buyer-name" label="주문자 성함" value={draft.buyerName} onChange={(event) => updateOrder("buyerName", event.target.value)} />
-          <FieldInput id="new-order-buyer-phone" label="주문자 전화번호" format="phone" value={draft.buyerPhone} onValueChange={(value) => updateOrder("buyerPhone", value)} />
-        </div>
+        <OrderFields draft={draft} idPrefix="new-order" onChange={updateOrder} />
         {workItems.map((item, index) => (
           <section key={item.id} className="sales-work-table__editor" aria-label={`작업 항목 ${index + 1}`}>
             <div>
